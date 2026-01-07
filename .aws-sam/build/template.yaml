@@ -41,6 +41,8 @@ Resources:
         Api:
           Type: Api
           Properties:
+            RestApiId:
+              Ref: MyApi
             Path: /feedback
             Method: post
       Policies:
@@ -132,11 +134,86 @@ Resources:
           - NotifyCriticalFunction
           - Arn
         Id: NotifyCriticalFunctionTarget
+  NotifyCriticalInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: NotifyCriticalFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn:
+        Fn::GetAtt:
+        - CriticalFeedbackRule
+        - Arn
+  MyUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: FeedbackUserPool
+      AutoVerifiedAttributes:
+      - email
+  GoogleIdP:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      ProviderName: Google
+      ProviderType: Google
+      UserPoolId:
+        Ref: MyUserPool
+      AttributeMapping:
+        email: email
+        given_name: given_name
+        family_name: family_name
+      ProviderDetails:
+        client_id: '{{resolve:secretsmanager:GoogleOAuthCredentials:SecretString:client_id}}'
+        client_secret: '{{resolve:secretsmanager:GoogleOAuthCredentials:SecretString:client_secret}}'
+        authorize_scopes: openid profile email
+  MyUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: FeedbackAppClient
+      UserPoolId:
+        Ref: MyUserPool
+      GenerateSecret: false
+      SupportedIdentityProviders:
+      - COGNITO
+      - Google
+      CallbackURLs:
+      - Fn::Sub: https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedback
+      LogoutURLs:
+      - Fn::Sub: https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/logout
+      AllowedOAuthFlows:
+      - code
+      AllowedOAuthScopes:
+      - email
+      - openid
+      - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      ExplicitAuthFlows:
+      - ALLOW_USER_SRP_AUTH
+      - ALLOW_REFRESH_TOKEN_AUTH
+    DependsOn: GoogleIdP
+  MyUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: feedback-login
+      UserPoolId:
+        Ref: MyUserPool
+  MyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        DefaultAuthorizer: MyCognitoAuthorizer
+        Authorizers:
+          MyCognitoAuthorizer:
+            UserPoolArn:
+              Fn::GetAtt:
+              - MyUserPool
+              - Arn
 Outputs:
-  ApiUrl:
-    Description: URL da API de feedback
+  FeedbackApiUrl:
+    Description: URL da API de feedback protegida por Cognito
     Value:
-      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/feedback
+      Fn::Sub: https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedback
   IngestFeedbackFunctionArn:
     Description: "ARN da fun\xE7\xE3o ingest-feedback"
     Value:
