@@ -12,6 +12,7 @@ Globals:
 
 Resources:
 
+  # DynamoDB para feedbacks
   FeedbacksTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -28,6 +29,7 @@ Resources:
     Metadata:
       SamResourceId: FeedbacksTable
 
+  # Dead Letter Queue
   FeedbackDLQ:
     Type: AWS::SQS::Queue
     Properties:
@@ -35,6 +37,7 @@ Resources:
     Metadata:
       SamResourceId: FeedbackDLQ
 
+  # Função ingest-feedback exposta via API protegida por Cognito
   IngestFeedbackFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -46,6 +49,7 @@ Resources:
         Api:
           Type: Api
           Properties:
+            RestApiId: !Ref MyApi
             Path: /feedback
             Method: post
       Policies:
@@ -125,16 +129,96 @@ Resources:
         - Arn: !GetAtt NotifyCriticalFunction.Arn
           Id: NotifyCriticalFunctionTarget
 
+  # Permissão para EventBridge invocar a Lambda notify-critical
+  NotifyCriticalInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref NotifyCriticalFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CriticalFeedbackRule.Arn
+
+  # Cognito User Pool
+  MyUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: FeedbackUserPool
+      AutoVerifiedAttributes:
+        - email
+
+  # Google Identity Provider (usando Secrets Manager)
+  GoogleIdP:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      ProviderName: Google
+      ProviderType: Google
+      UserPoolId: !Ref MyUserPool
+      AttributeMapping:
+        email: email
+        given_name: given_name
+        family_name: family_name
+      ProviderDetails:
+        client_id: "{{resolve:secretsmanager:GoogleOAuthCredentials:SecretString:client_id}}"
+        client_secret: "{{resolve:secretsmanager:GoogleOAuthCredentials:SecretString:client_secret}}"
+        authorize_scopes: "openid profile email"
+
+  # Cognito User Pool Client
+  MyUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: FeedbackAppClient
+      UserPoolId: !Ref MyUserPool
+      GenerateSecret: false
+      SupportedIdentityProviders:
+        - COGNITO
+        - Google
+      CallbackURLs:
+        - !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedback"
+      LogoutURLs:
+        - !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/logout"
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+    DependsOn: GoogleIdP
+
+  # Cognito Hosted UI Domain
+  MyUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: feedback-login
+      UserPoolId: !Ref MyUserPool
+
+  # API Gateway protegido com Cognito
+  MyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        DefaultAuthorizer: MyCognitoAuthorizer
+        Authorizers:
+          MyCognitoAuthorizer:
+            UserPoolArn: !GetAtt MyUserPool.Arn
+
 Outputs:
-  ApiUrl:
-    Description: URL da API de feedback
-    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/feedback
+  FeedbackApiUrl:
+    Description: URL da API de feedback protegida por Cognito
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedback"
+
   IngestFeedbackFunctionArn:
     Description: ARN da função ingest-feedback
     Value: !GetAtt IngestFeedbackFunction.Arn
+
   SendQueueFunctionArn:
     Description: ARN da função send-queue
     Value: !GetAtt SendQueueFunction.Arn
+
   NotifyCriticalFunctionArn:
     Description: ARN da função notify-critical
     Value: !GetAtt NotifyCriticalFunction.Arn

@@ -18,9 +18,6 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 
-/***
- * Lambda function to ingest feedback data and store it in DynamoDB.
- */
 public class IngestFeedbackFunction implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
     private final DynamoDbClient dynamoDbClient;
@@ -40,15 +37,25 @@ public class IngestFeedbackFunction implements RequestHandler<APIGatewayProxyReq
             try {
                 body = mapper.readValue(input.getBody(), Map.class);
             } catch (JsonProcessingException e) {
-                context.getLogger().log("Error parser JSON: " + e.getMessage());
-                return new APIGatewayProxyResponseEvent()
-                        .withStatusCode(400)
-                        .withBody("Erro ao processar JSON de entrada");
+                return buildResponse(400, Map.of("error", "Erro ao processar JSON de entrada"));
             }
         }
 
+        // --- Recupera claims do Cognito Authorizer ---
+        Map<String, Object> claims = null;
+        try {
+            Map<String, Object> authorizer = (Map<String, Object>) input.getRequestContext().getAuthorizer();
+            claims = (Map<String, Object>) authorizer.get("claims");
+        } catch (Exception e) {
+            // log opcional
+        }
+
+        String email = claims != null ? (String) claims.get("email") : "sem email";
+
+        // --- Monta item DynamoDB ---
         Map<String, AttributeValue> item = new HashMap<>();
-        item.put("feedbackId", AttributeValue.builder().s(UUID.randomUUID().toString()).build());
+        String feedbackId = UUID.randomUUID().toString();
+        item.put("feedbackId", AttributeValue.builder().s(feedbackId).build());
         item.put("fullName", AttributeValue.builder().s((String) body.getOrDefault("fullName", "undefined")).build());
         item.put("category", AttributeValue.builder().s((String) body.getOrDefault("category", "undefined")).build());
         item.put("comment", AttributeValue.builder().s((String) body.getOrDefault("comment", "empty")).build());
@@ -57,15 +64,40 @@ public class IngestFeedbackFunction implements RequestHandler<APIGatewayProxyReq
         String createdAt = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
         item.put("createdAt", AttributeValue.builder().s(createdAt).build());
 
-        PutItemRequest request = PutItemRequest.builder()
-                .tableName("FeedbacksTable")
-                .item(item)
-                .build();
+        try {
+            PutItemRequest request = PutItemRequest.builder()
+                    .tableName("FeedbacksTable")
+                    .item(item)
+                    .build();
 
-        dynamoDbClient.putItem(request);
+            dynamoDbClient.putItem(request);
+        } catch (Exception e) {
+            return buildResponse(500, Map.of("error", "Falha ao salvar feedback no banco"));
+        }
+
+        // --- Monta resposta JSON no formato desejado ---
+        Map<String, Object> responseBody = new HashMap<>();
+        responseBody.put("message", "Olá " + email + " seu feedback foi enviado com sucesso");
+        responseBody.put("feedbackId", feedbackId);
+        responseBody.put("createdAt", createdAt);
+
+        return buildResponse(200, responseBody);
+    }
+
+    private APIGatewayProxyResponseEvent buildResponse(int statusCode, Map<String, Object> body) {
+        String jsonResponse;
+        try {
+            jsonResponse = mapper.writeValueAsString(body);
+        } catch (JsonProcessingException e) {
+            jsonResponse = "{\"error\":\"Falha ao gerar resposta JSON\"}";
+        }
+
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
 
         return new APIGatewayProxyResponseEvent()
-                .withStatusCode(200)
-                .withBody("Feedback salvo com sucesso para: " + request);
+                .withStatusCode(statusCode)
+                .withHeaders(headers)
+                .withBody(jsonResponse);
     }
 }

@@ -52,8 +52,8 @@ public class NotifyCriticalFunction implements RequestHandler<Map<String,Object>
           "to": [
             { "email": "%s" }
           ],
-          "subject": "🚨 Feedback Crítico Recebido",
-          "text": "ID: %s\\nNome: %s\\nCategoria: %s\\nComentário: %s\\nNota: %d\\nData: %s",
+          "subject": "🚨 Feedback Recebido",
+          "text": "ID: %s\\nNome: %s\\nCategoria: %s\\nComentario: %s\\nNota: %d\\nData: %s",
           "category": "Feedback Alert"
         }
         """.formatted(
