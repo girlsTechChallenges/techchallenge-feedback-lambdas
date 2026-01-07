@@ -1,0 +1,28 @@
+# AWS SAM build artifacts
+.aws-sam/
+
+# IDE settings (IntelliJ, WebStorm, etc.)
+.idea/
+
+# Maven build output
+target/
+
+# Logs
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Java class files
+*.class
+
+# Temporary files
+*.tmp
+*.swp
+
+# VSCode settings (se usar)
+.vscode/
+
+# Environment files
+.env
