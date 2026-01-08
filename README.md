@@ -1,10 +1,28 @@
-# techchallenge-feedback
+# 🚀 Tech Challenge - Sistema de Feedbacks Serverless
 
-Este repositório contém uma aplicação **serverless** desenvolvida em **Java** com **Maven**, empacotada como funções **AWS Lambda**. O projeto está estruturado em módulos independentes, cada um representando uma função:
+Este repositório contém uma aplicação **serverless** desenvolvida em **Java 21** com **Maven**, empacotada como funções **AWS Lambda**. O sistema gerencia feedbacks de clientes com notificações automáticas para casos críticos.
 
-- **ingest-feedback**: função Lambda que ingere feedbacks (entrada principal).
-- **notify-critical**: função Lambda responsável por detectar feedbacks críticos e notificar.
-- **send-queue**: função Lambda que publica eventos no EventBridge.
+## 📋 Visão Geral do Sistema
+
+Este é um **sistema serverless de gerenciamento de feedbacks** que implementa uma arquitetura orientada a eventos na AWS. O sistema possui 3 funções Lambda conectadas em fluxo:
+
+### **1. ingest-feedback (Ponto de Entrada)**
+- Recebe feedbacks via **API Gateway** (POST `/feedback`)
+- Protegida por autenticação **Cognito** (incluindo suporte a login social com Google)
+- Salva o feedback no **DynamoDB** com ID único gerado automaticamente
+- Retorna confirmação com `feedbackId` e `timestamp`
+
+### **2. send-queue (Processador de Eventos)**
+- Acionada automaticamente por **DynamoDB Streams** quando novo feedback é inserido
+- Analisa se o feedback é crítico:
+  - Categoria "Critical" **OU**
+  - Rating ≤ 2
+- Publica evento no **EventBridge** com campo `isCritical`
+
+### **3. notify-critical (Notificador)**
+- Acionada pelo **EventBridge** apenas para feedbacks críticos (`isCritical: true`)
+- Envia e-mail via **API Mailtrap** para equipe de suporte
+- Formata notificação com todos os dados do feedback
 
 ---
 
@@ -57,145 +75,446 @@ techchallenge-feedback/
 
 ---
 
-## 🏗️ Visão geral da arquitetura
+## 🏗️ Arquitetura do Sistema
 
-1. O cliente envia um request para o endpoint (API Gateway), que aciona a função **ingest-feedback**.
-2. **ingest-feedback** grava o feedback no **DynamoDB**, que retorna `201 CREATED`.
-3. O **DynamoDB Streams** aciona a função **send-queue**, que publica o evento `feedback.created` no **EventBridge**.
-4. O **EventBridge** roteia o evento para a função **notify-critical**, caso o campo `"isCritical": true`.
-5. A função **notify-critical** envia uma notificação para um servidor de e-mail.
-6. Uma **DLQ (Dead Letter Queue)** está configurada para capturar mensagens com falha.
-7. **CloudWatch Logs** é utilizado para monitoramento e debugging.
+```
+┌─────────────┐
+│   Cliente   │
+└──────┬──────┘
+       │ POST /feedback
+       ↓
+┌─────────────────────────┐
+│  API Gateway + Cognito  │ ← Autenticação JWT
+└──────────┬──────────────┘
+           │
+           ↓
+┌──────────────────────┐
+│  Lambda: ingest      │ ← Handler de entrada
+│  -feedback           │
+└──────┬───────────────┘
+       │ PutItem
+       ↓
+┌──────────────────┐
+│    DynamoDB      │ ← Armazena feedbacks
+│  FeedbacksTable  │
+└──────┬───────────┘
+       │ Streams
+       ↓
+┌──────────────────────┐
+│  Lambda: send-queue  │ ← Processa eventos
+└──────┬───────────────┘
+       │ PutEvents (isCritical=true)
+       ↓
+┌──────────────────┐
+│   EventBridge    │ ← Filtra eventos críticos
+└──────┬───────────┘
+       │ Invoke (apenas críticos)
+       ↓
+┌──────────────────────────┐
+│  Lambda: notify-critical │ ← Envia notificações
+└──────┬───────────────────┘
+       │ HTTP POST
+       ↓
+┌──────────────┐
+│  Mailtrap    │ ← Serviço de e-mail
+│     API      │
+└──────────────┘
 
----
+          ┌────────────┐
+          │  SQS DLQ   │ ← Captura falhas
+          └────────────┘
+```
 
-## ⚙️ Dependências e pré-requisitos (Windows)
+### **Recursos AWS Utilizados**
+- **API Gateway** com autorização Cognito
+- **DynamoDB** com Streams habilitado
+- **EventBridge** com regra de roteamento para eventos críticos
+- **SQS Dead Letter Queue** para tratamento de falhas
+- **CloudWatch Logs** para monitoramento e debugging
+- **Cognito User Pool** com suporte a Google OAuth2
 
-- AWS SAM CLI (versão estável)
-- Docker (para executar Lambdas localmente)
+### **Tecnologias**
 - Java 21
-- Maven 3.x
-- Credenciais AWS configuradas
+- Maven (arquitetura multi-módulo)
+- AWS SAM (infraestrutura como código)
+- AWS SDK v2
+- Jackson para serialização JSON
 
 ---
 
-## 🔨 Build do projeto
+## ⚙️ Pré-requisitos
+
+- **AWS CLI** configurado com credenciais válidas
+- **AWS SAM CLI** (versão 1.x ou superior)
+- **Java 21** (JDK instalado)
+- **Maven 3.8+**
+- **Conta AWS** com permissões para criar recursos Lambda, DynamoDB, API Gateway, Cognito, etc.
+
+### Verificar instalações:
+
+```bash
+java -version    # Deve mostrar Java 21
+mvn -version     # Deve mostrar Maven 3.8+
+sam --version    # Deve mostrar SAM CLI 1.x+
+aws --version    # Deve mostrar AWS CLI
+```
+
+---
+
+## 🔨 Build do Projeto
 
 Na raiz do repositório, execute:
 
 ```bash
-  mvn clean package
+mvn clean package
 
 ```
 
-## 🚀 Executar localmente com SAM
-Para executar a função **ingest-feedback** localmente, use o comando:
+Este comando irá:
+- Compilar todos os módulos (ingest-feedback, send-queue, notify-critical)
+- Executar os testes unitários
+- Gerar os JARs empacotados com todas as dependências (uber JARs) em:
+  - `ingest-feedback/target/ingest-feedback-1.0.jar`
+  - `send-queue/target/send-queue-1.0.jar`
+  - `notify-critical/target/notify-critical-1.0.jar`
 
-```bash
-  sam local invoke IngestFeedbackFunction --event events/event.json --docker-network host
-
-```
+---
 
 ## 📦 Deploy para AWS
-Para fazer o deploy do projeto na AWS, utilize:
-```bash
-  sam build
-```
-```bash
-  sam deploy --guided
-```
 
-## 🧪 Testes
+### Passo 1: Compilar o Projeto
 
-Os testes unitários estão localizados na pasta `src/test/java/lambda/` de cada módulo:
-- `ingest-feedback/src/test/java/lambda/`
-- `notify-critical/src/test/java/lambda/`
-- `send-queue/src/test/java/lambda/`
-
-Para executar todos os testes do projeto, utilize o Maven na raiz do repositório:
 ```bash
-mvn test
+mvn clean package
 ```
 
-Após a execução, os relatórios de teste são gerados em:
-- `ingest-feedback/target/surefire-reports/`
-- `notify-critical/target/surefire-reports/`
-- `send-queue/target/surefire-reports/`
+### Passo 2: Deploy com SAM
 
-Para rodar um teste específico de um módulo, utilize:
 ```bash
-cd ingest-feedback
-mvn -Dtest=IngestFeedbackFunctionTest test
+sam deploy --guided
 ```
 
-Os resultados dos testes podem ser visualizados nos arquivos `.txt` e `.xml` dentro das pastas `surefire-reports` de cada módulo.
+Durante o deploy guiado, você será questionado sobre:
+- **Stack Name**: `techchallenge-feedback` (ou escolha outro nome)
+- **AWS Region**: `us-east-1` (recomendado)
+- **Confirm changes before deploy**: `Y`
+- **Allow SAM CLI IAM role creation**: `Y`
+- **Disable rollback**: `Y` (para debug, em produção use `N`)
+- **Save arguments to configuration file**: `Y`
+
+### Passo 3: Atualizar Códigos das Lambdas
+
+Devido a limitações do SAM com projetos Maven multi-módulo, após o primeiro deploy, atualize manualmente os códigos:
+
+```bash
+# Atualizar ingest-feedback
+aws lambda update-function-code --function-name ingest-feedback \
+  --zip-file fileb://ingest-feedback/target/ingest-feedback-1.0.jar
+
+# Atualizar send-queue
+aws lambda update-function-code --function-name send-queue \
+  --zip-file fileb://send-queue/target/send-queue-1.0.jar
+
+# Atualizar notify-critical
+aws lambda update-function-code --function-name notify-critical \
+  --zip-file fileb://notify-critical/target/notify-critical-1.0.jar
+```
+
+### Passo 4: Obter URLs e IDs
+
+Após o deploy, anote os outputs:
+
+```bash
+# Obter URL da API
+aws cloudformation describe-stacks --stack-name techchallenge-feedback \
+  --query 'Stacks[0].Outputs[?OutputKey==`FeedbackApiUrl`].OutputValue' \
+  --output text
+
+# Obter User Pool ID
+aws cognito-idp list-user-pools --max-results 10 \
+  --query 'UserPools[?Name==`FeedbackUserPool`].Id' \
+  --output text
+
+# Obter Client ID
+aws cognito-idp list-user-pool-clients --user-pool-id <USER_POOL_ID> \
+  --query 'UserPoolClients[0].ClientId' \
+  --output text
+```
 
 ---
 
-## 🐞 Debugging e Logs
+## 👤 Configurar Usuário de Teste
 
-- Os logs das funções Lambda são enviados automaticamente para o **AWS CloudWatch Logs**.
-- Para acessar os logs, utilize o console AWS ou o comando:
-  ```bash
-  aws logs tail /aws/lambda/NOME_DA_FUNCAO --follow
-  ```
-- Recomenda-se adicionar logs informativos e de erro no código para facilitar o troubleshooting.
-- Utilize DLQ (Dead Letter Queue) para capturar eventos com falha.
+### Criar usuário no Cognito:
 
----
+```bash
+# Substitua <USER_POOL_ID> pelo ID obtido anteriormente
+aws cognito-idp admin-create-user \
+  --user-pool-id <USER_POOL_ID> \
+  --username teste@exemplo.com \
+  --temporary-password TempPass123! \
+  --message-action SUPPRESS
 
-## 🏅 Boas Práticas
+# Definir senha permanente
+aws cognito-idp admin-set-user-password \
+  --user-pool-id <USER_POOL_ID> \
+  --username teste@exemplo.com \
+  --password SenhaSegura123! \
+  --permanent
+```
 
-- Utilize nomes claros para funções, variáveis e eventos.
-- Escreva testes unitários para cada função Lambda.
-- Faça tratamento de erros e valide entradas.
-- Mantenha o código modular e documentado.
-- Use versionamento semântico no Maven.
+### Habilitar autenticação via password:
 
----
-
-## 📦 Exemplos de Payloads e Comandos
-
-- Exemplo de evento para ingestão de feedback: [`events/event.json`](events/event.json)
-  ```json
-  {
-    "feedbackId": "123",
-    "userId": "456",
-    "message": "Ótimo atendimento!",
-    "isCritical": false
-  }
-  ```
-- Exemplo de evento crítico: [`events/notify-event.json`](events/notify-event.json)
-  ```json
-  {
-    "feedbackId": "789",
-    "userId": "456",
-    "message": "Problema grave detectado!",
-    "isCritical": true
-  }
-  ```
-- Comando para invocar função localmente:
-  ```bash
-  sam local invoke IngestFeedbackFunction --event events/event.json --docker-network host
-  ```
-- Exemplo de chamada via curl para API Gateway (ajuste a URL conforme seu endpoint):
-  ```bash
-  curl -X POST https://<API_ID>.execute-api.<REGIAO>.amazonaws.com/prod/feedback \
-    -H "Content-Type: application/json" \
-    -d '{
-      "feedbackId": "123",
-      "userId": "456",
-      "message": "Ótimo atendimento!",
-      "isCritical": false
-    }'
-  ```
+```bash
+aws cognito-idp update-user-pool-client \
+  --user-pool-id <USER_POOL_ID> \
+  --client-id <CLIENT_ID> \
+  --explicit-auth-flows ALLOW_ADMIN_USER_PASSWORD_AUTH ALLOW_USER_SRP_AUTH ALLOW_REFRESH_TOKEN_AUTH
+```
 
 ---
 
-## 📊 Status do Projeto
+## 🧪 Testes via Linha de Comando
 
-![Build](https://img.shields.io/badge/build-passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+### 1. Obter Token de Autenticação
+
+```bash
+# PowerShell
+$auth = aws cognito-idp admin-initiate-auth `
+  --user-pool-id <USER_POOL_ID> `
+  --client-id <CLIENT_ID> `
+  --auth-flow ADMIN_NO_SRP_AUTH `
+  --auth-parameters USERNAME="teste@exemplo.com",PASSWORD="SenhaSegura123!" | ConvertFrom-Json
+
+$idToken = $auth.AuthenticationResult.IdToken
+```
+
+```bash
+# Bash/Linux
+export ID_TOKEN=$(aws cognito-idp admin-initiate-auth \
+  --user-pool-id <USER_POOL_ID> \
+  --client-id <CLIENT_ID> \
+  --auth-flow ADMIN_NO_SRP_AUTH \
+  --auth-parameters USERNAME=teste@exemplo.com,PASSWORD=SenhaSegura123! \
+  --query 'AuthenticationResult.IdToken' \
+  --output text)
+```
+
+### 2. Enviar Feedback via API
+
+```bash
+# PowerShell
+$headers = @{
+    "Authorization" = $idToken
+    "Content-Type" = "application/json"
+}
+
+$body = @{
+    fullName = "João Silva"
+    category = "Critical"
+    comment = "Sistema muito lento!"
+    rating = 1
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "<API_URL>" -Method Post -Headers $headers -Body $body
+```
+
+```bash
+# Bash/Linux/Mac
+curl -X POST "<API_URL>" \
+  -H "Authorization: ${ID_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fullName": "João Silva",
+    "category": "Critical",
+    "comment": "Sistema muito lento!",
+    "rating": 1
+  }'
+```
+
+### 3. Verificar Feedbacks no DynamoDB
+
+```bash
+aws dynamodb scan --table-name FeedbacksTable --output table
+```
+
+### 4. Ver Logs das Lambdas
+
+```bash
+# Logs da função ingest-feedback
+aws logs tail /aws/lambda/ingest-feedback --since 5m --format short
+
+# Logs da função send-queue
+aws logs tail /aws/lambda/send-queue --since 5m --format short
+
+# Logs da função notify-critical (apenas feedbacks críticos)
+aws logs tail /aws/lambda/notify-critical --since 5m --format short
+```
+
+---
+
+## 📮 Testes com Postman
+
+### Passo 1: Importar Collection
+
+1. Abra o Postman
+2. Clique em **Import** no canto superior esquerdo
+3. Selecione o arquivo `postman_collection.json` deste repositório
+4. A collection "Tech Challenge - Feedbacks API" será importada
+
+### Passo 2: Configurar Variáveis de Ambiente
+
+Na collection, configure as seguintes variáveis:
+
+| Variável | Descrição | Valor |
+|----------|-----------|---------|  
+| `api_url` | URL da API Gateway | `https://ooz1z63v31.execute-api.us-east-1.amazonaws.com/Prod/feedback` |
+| `user_pool_id` | ID do Cognito User Pool | `us-east-1_tOiC4wx53` |
+| `client_id` | ID do Cognito Client | `6rqg0qir3728q1eh00smouvm60` |
+| `username` | Email do usuário de teste | `teste@fiap.com` |
+| `password` | Senha do usuário | `FiapTeste123!` |
+
+### Passo 3: Obter Token JWT
+
+1. Execute a requisição **"1. Get JWT Token"**
+2. O token será automaticamente salvo na variável `id_token`
+3. Todas as outras requisições usarão este token automaticamente
+
+### Passo 4: Enviar Feedbacks
+
+Use as requisições pré-configuradas:
+
+- **2. Send Critical Feedback** - Feedback crítico (gera notificação)
+- **3. Send Low Rating Feedback** - Rating baixo (gera notificação)
+- **4. Send Normal Feedback** - Feedback normal (não gera notificação)
+- **5. Send Positive Feedback** - Feedback positivo (não gera notificação)
+
+### Estrutura da Collection
+
+```
+Tech Challenge - Feedbacks API/
+├── 1. Get JWT Token (POST) - Obtém token do Cognito
+├── 2. Send Critical Feedback (POST) - Categoria Critical
+├── 3. Send Low Rating Feedback (POST) - Rating 2
+├── 4. Send Normal Feedback (POST) - Categoria General
+└── 5. Send Positive Feedback (POST) - Rating 5
+```
+
+### Testando Diferentes Cenários
+
+**Feedback Crítico (gera notificação):**
+- `category`: "Critical" OU
+- `rating`: 1 ou 2
+
+**Feedback Normal (não gera notificação):**
+- `category`: "General", "Service", "Suggestion"
+- `rating`: 3, 4 ou 5
+
+---
+
+## 🔍 Monitoramento
+
+### Script de Monitoramento
+
+Execute o script para verificar o estado do sistema:
+
+```bash
+# PowerShell
+.\monitor.ps1
+```
+
+O script mostra:
+- Status das 3 Lambdas
+- Total de feedbacks no DynamoDB
+- Mensagens na Dead Letter Queue
+- Invocações recentes (últimos 5 minutos)
+
+### Métricas no CloudWatch
+
+Acesse o CloudWatch Console para visualizar:
+- **Invocations**: Número de execuções de cada Lambda
+- **Errors**: Quantidade de erros
+- **Duration**: Tempo médio de execução
+- **Throttles**: Requisições bloqueadas por limite
+
+---
+
+## 🚨 Troubleshooting
+
+### Lambda retorna ClassNotFoundException
+
+**Problema**: Código não foi empacotado corretamente
+
+**Solução**:
+```bash
+mvn clean package
+aws lambda update-function-code --function-name ingest-feedback \
+  --zip-file fileb://ingest-feedback/target/ingest-feedback-1.0.jar
+```
+
+### Notificação não foi enviada
+
+**Causas possíveis**:
+1. Feedback não é crítico (verifique categoria e rating)
+2. Token Mailtrap inválido
+3. Erro na Lambda notify-critical
+
+**Verificar logs**:
+```bash
+aws logs tail /aws/lambda/notify-critical --since 10m --format short
+```
+
+### Erro de autenticação no Cognito
+
+**Problema**: Token expirado ou credenciais inválidas
+
+**Solução**:
+- Tokens JWT expiram em 1 hora
+- Gere um novo token com o comando de autenticação
+- Verifique se o fluxo ADMIN_NO_SRP_AUTH está habilitado
+
+### DynamoDB não recebe dados
+
+**Verificar**:
+1. Permissões IAM da Lambda ingest-feedback
+2. Logs da Lambda: `aws logs tail /aws/lambda/ingest-feedback --since 5m`
+3. Nome da tabela no código (deve ser "FeedbacksTable")
+
+---
+
+## 🗑️ Limpeza de Recursos
+
+Para deletar todos os recursos criados na AWS:
+
+```bash
+# Deletar stack do CloudFormation
+aws cloudformation delete-stack --stack-name techchallenge-feedback
+
+# Aguardar conclusão
+aws cloudformation wait stack-delete-complete --stack-name techchallenge-feedback
+
+# Deletar bucket S3 do SAM (se necessário)
+aws s3 rb s3://aws-sam-cli-managed-default-samclisourcebucket-xxxx --force
+```
+
+---
+
+## 📊 Regras de Negócio
+
+### Feedback Crítico
+
+Um feedback é considerado **crítico** quando atende a **pelo menos uma** das condições:
+- `category == "Critical"`
+- `rating <= 2`
+
+### Fluxo de Notificação
+
+1. Feedback salvo no DynamoDB
+2. DynamoDB Streams → Lambda send-queue
+3. send-queue avalia criticidade e publica no EventBridge
+4. EventBridge filtra eventos com `isCritical: true`
+5. EventBridge → Lambda notify-critical
+6. notify-critical envia e-mail via Mailtrap API
 
 ---
 

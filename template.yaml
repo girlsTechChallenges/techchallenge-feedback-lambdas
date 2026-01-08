@@ -42,7 +42,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: ingest-feedback
-      CodeUri: ./ingest-feedback
+      CodeUri: ingest-feedback/
       Handler: lambda.IngestFeedbackFunction::handleRequest
       Runtime: java21
       Events:
@@ -59,13 +59,13 @@ Resources:
         Type: SQS
         TargetArn: !GetAtt FeedbackDLQ.Arn
     Metadata:
-      SamResourceId: IngestFeedbackFunction
+      BuildMethod: makefile
 
   SendQueueFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: send-queue
-      CodeUri: ./send-queue
+      CodeUri: send-queue/
       Handler: lambda.SendQueueFunction::handleRequest
       Runtime: java21
       Events:
@@ -89,13 +89,13 @@ Resources:
         Type: SQS
         TargetArn: !GetAtt FeedbackDLQ.Arn
     Metadata:
-      SamResourceId: SendQueueFunction
+      BuildMethod: makefile
 
   NotifyCriticalFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: notify-critical
-      CodeUri: ./notify-critical
+      CodeUri: notify-critical/
       Handler: lambda.NotifyCriticalFunction::handleRequest
       Runtime: java21
       Policies:
@@ -111,7 +111,7 @@ Resources:
         Type: SQS
         TargetArn: !GetAtt FeedbackDLQ.Arn
     Metadata:
-      SamResourceId: NotifyCriticalFunction
+      BuildMethod: makefile
 
   CriticalFeedbackRule:
     Type: AWS::Events::Rule
@@ -146,22 +146,6 @@ Resources:
       AutoVerifiedAttributes:
         - email
 
-  # Google Identity Provider (usando Secrets Manager)
-  GoogleIdP:
-    Type: AWS::Cognito::UserPoolIdentityProvider
-    Properties:
-      ProviderName: Google
-      ProviderType: Google
-      UserPoolId: !Ref MyUserPool
-      AttributeMapping:
-        email: email
-        given_name: given_name
-        family_name: family_name
-      ProviderDetails:
-        client_id: "{{resolve:secretsmanager:GoogleOAuthCredentials:SecretString:client_id}}"
-        client_secret: "{{resolve:secretsmanager:GoogleOAuthCredentials:SecretString:client_secret}}"
-        authorize_scopes: "openid profile email"
-
   # Cognito User Pool Client
   MyUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
@@ -171,7 +155,6 @@ Resources:
       GenerateSecret: false
       SupportedIdentityProviders:
         - COGNITO
-        - Google
       CallbackURLs:
         - !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedback"
       LogoutURLs:
@@ -186,13 +169,12 @@ Resources:
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
-    DependsOn: GoogleIdP
 
   # Cognito Hosted UI Domain
   MyUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      Domain: feedback-login
+      Domain: !Sub "feedback-login-${AWS::StackName}-${AWS::AccountId}"
       UserPoolId: !Ref MyUserPool
 
   # API Gateway protegido com Cognito
