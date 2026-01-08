@@ -20,30 +20,39 @@ Resources:
       AttributeDefinitions:
         - AttributeName: feedbackId
           AttributeType: S
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
       KeySchema:
         - AttributeName: feedbackId
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: pk-createdAt-index
+          KeySchema:
+            - AttributeName: pk
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       BillingMode: PAY_PER_REQUEST
       StreamSpecification:
         StreamViewType: NEW_IMAGE
-    Metadata:
-      SamResourceId: FeedbacksTable
 
   # Dead Letter Queue
   FeedbackDLQ:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: FeedbackDLQ
-    Metadata:
-      SamResourceId: FeedbackDLQ
 
-  # Função ingest-feedback exposta via API protegida por Cognito
-  IngestFeedbackFunction:
+  # Função insert-feedback exposta via API protegida por Cognito
+  InsertFeedbackFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: ingest-feedback
-      CodeUri: ingest-feedback/
-      Handler: lambda.IngestFeedbackFunction::handleRequest
+      FunctionName: insert-feedback
+      CodeUri: insert-feedback/target/insert-feedback-1.0.jar
+      Handler: lambda.InsertFeedbackFunction::handleRequest
       Runtime: java21
       Events:
         Api:
@@ -58,14 +67,12 @@ Resources:
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt FeedbackDLQ.Arn
-    Metadata:
-      BuildMethod: makefile
 
   SendQueueFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: send-queue
-      CodeUri: send-queue/
+      CodeUri: send-queue/target/send-queue-1.0.jar
       Handler: lambda.SendQueueFunction::handleRequest
       Runtime: java21
       Events:
@@ -88,14 +95,12 @@ Resources:
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt FeedbackDLQ.Arn
-    Metadata:
-      BuildMethod: makefile
 
   NotifyCriticalFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: notify-critical
-      CodeUri: notify-critical/
+      CodeUri: notify-critical/target/notify-critical-1.0.jar
       Handler: lambda.NotifyCriticalFunction::handleRequest
       Runtime: java21
       Policies:
@@ -110,8 +115,6 @@ Resources:
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt FeedbackDLQ.Arn
-    Metadata:
-      BuildMethod: makefile
 
   CriticalFeedbackRule:
     Type: AWS::Events::Rule
@@ -138,64 +141,156 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt CriticalFeedbackRule.Arn
 
+  # === NOVAS LAMBDAS PARA RELATÓRIOS ===
+
+  # S3 Bucket para relatórios semanais
+  FeedbackReportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "feedback-reports-${AWS::StackName}-${AWS::AccountId}"
+
+  # Lambda para listar feedbacks
+  ListFeedbacksFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: list-feedbacks
+      CodeUri: list-feedbacks/target/list-feedbacks-1.0.jar
+      Handler: lambda.ListFeedbacksFunction::handleRequest
+      Runtime: java21
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref FeedbacksTable
+          DEFAULT_PAGE_SIZE: 100
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /feedbacks
+            Method: get
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FeedbacksTable
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt FeedbackDLQ.Arn
+
+  # Lambda para gerar relatório semanal
+  GenerateWeeklyReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: generate-weekly-report
+      CodeUri: generate-weekly-report/target/generate-weekly-report-1.0.jar
+      Handler: lambda.GenerateWeeklyReportFunction::handleRequest
+      Runtime: java21
+      Environment:
+        Variables:
+          REPORTS_BUCKET: !Ref FeedbackReportsBucket
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref FeedbackReportsBucket
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt FeedbackDLQ.Arn
+
+  # Lambda para notificar relatório via SES
+  NotifyReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: notify-report
+      CodeUri: notify-report/target/notify-report-1.0.jar
+      Handler: lambda.NotifyReportFunction::handleRequest
+      Runtime: java21
+      Environment:
+        Variables:
+          REPORTS_BUCKET: !Ref FeedbackReportsBucket
+          RECIPIENT_EMAIL: "luanacherri@gmail.com"
+          SOURCE_EMAIL: "luanacherri@gmail.com"
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref FeedbackReportsBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: '*'
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt FeedbackDLQ.Arn
+
+  # Step Functions State Machine para processar feedbacks
+  FeedbackProcessingStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: feedback-processing
+      DefinitionUri: statemachine/feedback-processing.asl.json
+      DefinitionSubstitutions:
+        ListFeedbacksFunctionArn: !GetAtt ListFeedbacksFunction.Arn
+        GenerateWeeklyReportFunctionArn: !GetAtt GenerateWeeklyReportFunction.Arn
+        NotifyReportFunctionArn: !GetAtt NotifyReportFunction.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ListFeedbacksFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref GenerateWeeklyReportFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref NotifyReportFunction
+
+  # EventBridge Rule para trigger semanal (domingo às 23:00 UTC)
+  WeeklyReportScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: WeeklyReportSchedule
+      Description: Trigger semanal para gerar relatório de feedbacks
+      ScheduleExpression: cron(0 23 ? * SUN *)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt FeedbackProcessingStateMachine.Arn
+          Id: WeeklyReportTarget
+          RoleArn: !GetAtt EventBridgeStateMachineRole.Arn
+          Input: |
+            {
+              "startDate": "2020-01-01T00:00:00Z",
+              "endDate": "2030-12-31T23:59:59Z"
+            }
+
+  # IAM Role para EventBridge invocar Step Functions
+  EventBridgeStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StartStateMachinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: !GetAtt FeedbackProcessingStateMachine.Arn
+
   # Cognito User Pool
-  MyUserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      UserPoolName: FeedbackUserPool
-      AutoVerifiedAttributes:
-        - email
-
-  # Cognito User Pool Client
-  MyUserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      ClientName: FeedbackAppClient
-      UserPoolId: !Ref MyUserPool
-      GenerateSecret: false
-      SupportedIdentityProviders:
-        - COGNITO
-      CallbackURLs:
-        - !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedback"
-      LogoutURLs:
-        - !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/logout"
-      AllowedOAuthFlows:
-        - code
-      AllowedOAuthScopes:
-        - email
-        - openid
-        - profile
-      AllowedOAuthFlowsUserPoolClient: true
-      ExplicitAuthFlows:
-        - ALLOW_USER_SRP_AUTH
-        - ALLOW_REFRESH_TOKEN_AUTH
-
-  # Cognito Hosted UI Domain
-  MyUserPoolDomain:
-    Type: AWS::Cognito::UserPoolDomain
-    Properties:
-      Domain: !Sub "feedback-login-${AWS::StackName}-${AWS::AccountId}"
-      UserPoolId: !Ref MyUserPool
-
-  # API Gateway protegido com Cognito
+  # API Gateway (sem autenticação)
   MyApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
-      Auth:
-        DefaultAuthorizer: MyCognitoAuthorizer
-        Authorizers:
-          MyCognitoAuthorizer:
-            UserPoolArn: !GetAtt MyUserPool.Arn
 
 Outputs:
   FeedbackApiUrl:
-    Description: URL da API de feedback protegida por Cognito
+    Description: URL da API de feedback (sem autenticação)
     Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedback"
 
-  IngestFeedbackFunctionArn:
-    Description: ARN da função ingest-feedback
-    Value: !GetAtt IngestFeedbackFunction.Arn
+  InsertFeedbackFunctionArn:
+    Description: ARN da função insert-feedback
+    Value: !GetAtt InsertFeedbackFunction.Arn
 
   SendQueueFunctionArn:
     Description: ARN da função send-queue
@@ -204,3 +299,27 @@ Outputs:
   NotifyCriticalFunctionArn:
     Description: ARN da função notify-critical
     Value: !GetAtt NotifyCriticalFunction.Arn
+
+  ListFeedbacksFunctionArn:
+    Description: ARN da função list-feedbacks
+    Value: !GetAtt ListFeedbacksFunction.Arn
+
+  GenerateWeeklyReportFunctionArn:
+    Description: ARN da função generate-weekly-report
+    Value: !GetAtt GenerateWeeklyReportFunction.Arn
+
+  NotifyReportFunctionArn:
+    Description: ARN da função notify-report
+    Value: !GetAtt NotifyReportFunction.Arn
+
+  FeedbackReportsBucketName:
+    Description: Nome do bucket S3 para relatórios
+    Value: !Ref FeedbackReportsBucket
+
+  FeedbackProcessingStateMachineArn:
+    Description: ARN da Step Function para processamento de feedbacks
+    Value: !GetAtt FeedbackProcessingStateMachine.Arn
+
+  ListFeedbacksApiUrl:
+    Description: URL da API para listar feedbacks
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedbacks"

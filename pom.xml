@@ -16,9 +16,12 @@
     </properties>
 
     <modules>
-        <module>ingest-feedback</module>
+        <module>insert-feedback</module>
         <module>send-queue</module>
         <module>notify-critical</module>
+        <module>list-feedbacks</module>
+        <module>generate-weekly-report</module>
+        <module>notify-report</module>
     </modules>
 
     <dependencyManagement>

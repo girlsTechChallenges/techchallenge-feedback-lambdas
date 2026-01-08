@@ -1,0 +1,76 @@
+{
+  "Comment": "Feedback processing workflow - lista feedbacks, gera relatório e envia por email",
+  "StartAt": "ListFeedbacks",
+  "States": {
+    "ListFeedbacks": {
+      "Type": "Task",
+      "Resource": "${ListFeedbacksFunctionArn}",
+      "ResultPath": "$.listResult",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ErrorHandler"
+        }
+      ],
+      "Next": "GenerateWeeklyReport"
+    },
+    "GenerateWeeklyReport": {
+      "Type": "Task",
+      "Resource": "${GenerateWeeklyReportFunctionArn}",
+      "Parameters": {
+        "feedbacks.$": "$.listResult.items"
+      },
+      "ResultPath": "$.reportKey",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ErrorHandler"
+        }
+      ],
+      "Next": "NotifyReport"
+    },
+    "NotifyReport": {
+      "Type": "Task",
+      "Resource": "${NotifyReportFunctionArn}",
+      "Parameters": {
+        "reportKey.$": "$.reportKey"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ErrorHandler"
+        }
+      ],
+      "End": true
+    },
+    "ErrorHandler": {
+      "Type": "Fail",
+      "Cause": "Error processing feedback workflow",
+      "Error": "WorkflowExecutionError"
+    }
+  }
+}
