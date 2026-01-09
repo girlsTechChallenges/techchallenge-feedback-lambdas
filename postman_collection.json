@@ -334,6 +334,87 @@
         "description": "Envia um feedback positivo.\n\n**Categoria**: Suggestion  \n**Rating**: 5  \n**Resultado Esperado**: ❌ NÃO gera notificação\n\n**Por que não é crítico?**\n- category ≠ \"Critical\"\n- rating > 2"
       },
       "response": []
+    },
+    {
+      "name": "6. List Feedbacks",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains items array\", function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('items');",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "    pm.expect(jsonData).to.have.property('count');",
+              "});",
+              "",
+              "pm.test(\"Each feedback has required fields\", function () {",
+              "    const jsonData = pm.response.json();",
+              "    if (jsonData.items.length > 0) {",
+              "        const feedback = jsonData.items[0];",
+              "        pm.expect(feedback).to.have.property('feedbackId');",
+              "        pm.expect(feedback).to.have.property('pk');",
+              "        pm.expect(feedback).to.have.property('createdAt');",
+              "        pm.expect(feedback).to.have.property('descricao');",
+              "        pm.expect(feedback).to.have.property('nota');",
+              "        pm.expect(feedback).to.have.property('urgencia');",
+              "    }",
+              "});",
+              "",
+              "const jsonData = pm.response.json();",
+              "console.log(\"✓ Total de feedbacks encontrados:\", jsonData.count);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{list_api_url}}?startDate=2026-01-01&endDate=2026-01-10",
+          "host": [
+            "{{list_api_url}}"
+          ],
+          "query": [
+            {
+              "key": "startDate",
+              "value": "2026-01-01",
+              "description": "Data inicial (formato: YYYY-MM-DD)"
+            },
+            {
+              "key": "endDate",
+              "value": "2026-01-10",
+              "description": "Data final (formato: YYYY-MM-DD)"
+            },
+            {
+              "key": "urgency",
+              "value": "ALTA",
+              "description": "Filtrar por urgência (ALTA, MEDIA, BAIXA)",
+              "disabled": true
+            },
+            {
+              "key": "limit",
+              "value": "50",
+              "description": "Número máximo de resultados (padrão: 100)",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "Lista feedbacks com filtros opcionais.\n\n**Parâmetros Query:**\n- `startDate` (obrigatório): Data inicial no formato YYYY-MM-DD\n- `endDate` (obrigatório): Data final no formato YYYY-MM-DD\n- `urgency` (opcional): Filtrar por urgência (ALTA, MEDIA, BAIXA)\n- `limit` (opcional): Número máximo de resultados (padrão: 100)\n\n**Exemplo de Uso:**\n- Todos feedbacks: `?startDate=2026-01-01&endDate=2026-01-10`\n- Apenas críticos: `?startDate=2026-01-01&endDate=2026-01-10&urgency=ALTA`\n- Limitados: `?startDate=2026-01-01&endDate=2026-01-10&limit=20`"
+      },
+      "response": []
     }
   ],
   "event": [
@@ -373,6 +454,11 @@
       "type": "string"
     },
     {
+      "key": "list_api_url",
+      "value": "https://ooz1z63v31.execute-api.us-east-1.amazonaws.com/Prod/feedbacks",
+      "type": "string"
+    },
+    {
       "key": "user_pool_id",
       "value": "us-east-1_tOiC4wx53",
       "type": "string"
@@ -394,6 +480,16 @@
     },
     {
       "key": "id_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "state_machine_arn",
+      "value": "arn:aws:states:us-east-1:XXXXXXXXXXXX:stateMachine:feedback-processing",
+      "type": "string"
+    },
+    {
+      "key": "execution_arn",
       "value": "",
       "type": "string"
     }

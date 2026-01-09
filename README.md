@@ -410,8 +410,6 @@ aws lambda update-function-configuration \
 
 ### Teste 1: Criar Feedback via API (POST)
 
-### Teste 1: Criar Feedback via API (POST)
-
 #### Usando PowerShell:
 
 ```powershell
@@ -517,81 +515,253 @@ aws dynamodb scan --table-name FeedbacksTable --limit 5 --output json
 
 ---
 
-### Teste 4: Executar Manualmente a Step Function (Gerar Relatório)
+### Teste 4: Gerar Relatório Semanal via Terminal
+
+#### **Passo 1: Obter o ARN da Step Function**
+
+```powershell
+# PowerShell - Obter o ARN da Step Function
+$stateMachineArn = aws cloudformation describe-stacks `
+  --stack-name techchallenge-feedback `
+  --query "Stacks[0].Outputs[?OutputKey=='FeedbackProcessingStateMachineArn'].OutputValue" `
+  --output text
+
+Write-Host "State Machine ARN: $stateMachineArn"
+```
 
 ```bash
-# PowerShell
-$executionName = "test-exec-$(Get-Date -Format 'yyyyMMddHHmmss')"
-aws stepfunctions start-execution `
-  --state-machine-arn "arn:aws:states:us-east-1:XXXXXXXXXXXX:stateMachine:feedback-processing" `
+# Bash/Linux - Obter o ARN da Step Function
+STATE_MACHINE_ARN=$(aws cloudformation describe-stacks \
+  --stack-name techchallenge-feedback \
+  --query "Stacks[0].Outputs[?OutputKey=='FeedbackProcessingStateMachineArn'].OutputValue" \
+  --output text)
+
+echo "State Machine ARN: $STATE_MACHINE_ARN"
+```
+
+#### **Passo 2: Executar a Step Function**
+
+```powershell
+# PowerShell - Executar Step Function
+$executionName = "manual-exec-$(Get-Date -Format 'yyyyMMddHHmmss')"
+$executionArn = aws stepfunctions start-execution `
+  --state-machine-arn $stateMachineArn `
   --input '{\"startDate\":\"2026-01-01\",\"endDate\":\"2026-01-10\"}' `
-  --name $executionName
+  --name $executionName `
+  --query 'executionArn' `
+  --output text
+
+Write-Host "Execução iniciada!"
+Write-Host "Execution ARN: $executionArn"
+Write-Host ""
+Write-Host "Aguarde 10-15 segundos para o processamento..."
 ```
 
 ```bash
-# Bash/Linux
-EXECUTION_NAME="test-exec-$(date +%Y%m%d%H%M%S)"
-aws stepfunctions start-execution \
-  --state-machine-arn "arn:aws:states:us-east-1:XXXXXXXXXXXX:stateMachine:feedback-processing" \
+# Bash/Linux - Executar Step Function
+EXECUTION_NAME="manual-exec-$(date +%Y%m%d%H%M%S)"
+EXECUTION_ARN=$(aws stepfunctions start-execution \
+  --state-machine-arn "$STATE_MACHINE_ARN" \
   --input '{"startDate":"2026-01-01","endDate":"2026-01-10"}' \
-  --name "$EXECUTION_NAME"
+  --name "$EXECUTION_NAME" \
+  --query 'executionArn' \
+  --output text)
+
+echo "Execução iniciada!"
+echo "Execution ARN: $EXECUTION_ARN"
+echo ""
+echo "Aguarde 10-15 segundos para o processamento..."
 ```
 
-**Aguarde alguns segundos** e verifique o status:
+#### **Passo 3: Verificar o Status da Execução**
+
+```powershell
+# PowerShell - Verificar status
+Start-Sleep -Seconds 10
+
+$status = aws stepfunctions describe-execution `
+  --execution-arn $executionArn `
+  --query 'status' `
+  --output text
+
+Write-Host "Status: $status"
+
+if ($status -eq "SUCCEEDED") {
+    Write-Host "✅ Relatório gerado e enviado com sucesso!" -ForegroundColor Green
+    Write-Host "📧 Verifique seu e-mail para ver o relatório."
+} elseif ($status -eq "RUNNING") {
+    Write-Host "⏳ Ainda processando... Execute o comando novamente em alguns segundos." -ForegroundColor Yellow
+} elseif ($status -eq "FAILED") {
+    Write-Host "❌ Execução falhou!" -ForegroundColor Red
+    aws stepfunctions describe-execution --execution-arn $executionArn --query 'cause' --output text
+}
+```
 
 ```bash
-# Substituir pelo ARN da execução retornado no comando anterior
-aws stepfunctions describe-execution \
-  --execution-arn "arn:aws:states:us-east-1:XXXX:execution:feedback-processing:test-exec-XXXXXXXX"
+# Bash/Linux - Verificar status
+sleep 10
+
+STATUS=$(aws stepfunctions describe-execution \
+  --execution-arn "$EXECUTION_ARN" \
+  --query 'status' \
+  --output text)
+
+echo "Status: $STATUS"
+
+if [ "$STATUS" = "SUCCEEDED" ]; then
+    echo "✅ Relatório gerado e enviado com sucesso!"
+    echo "📧 Verifique seu e-mail para ver o relatório."
+elif [ "$STATUS" = "RUNNING" ]; then
+    echo "⏳ Ainda processando... Execute o comando novamente em alguns segundos."
+elif [ "$STATUS" = "FAILED" ]; then
+    echo "❌ Execução falhou!"
+    aws stepfunctions describe-execution --execution-arn "$EXECUTION_ARN" --query 'cause' --output text
+fi
 ```
 
-**Status esperado:**
-```json
-{
-  "status": "SUCCEEDED",
-  "output": "Relatório enviado com sucesso para seu-email@exemplo.com"
+#### **Passo 4: Ver Detalhes Completos da Execução**
+
+```powershell
+# PowerShell - Ver detalhes completos
+aws stepfunctions describe-execution --execution-arn $executionArn --output json
+```
+
+```bash
+# Bash/Linux - Ver detalhes completos
+aws stepfunctions describe-execution --execution-arn "$EXECUTION_ARN" --output json
+```
+
+#### **Passo 5: Verificar o Relatório no S3**
+
+```powershell
+# PowerShell - Listar relatórios gerados
+$bucketName = aws cloudformation describe-stacks `
+  --stack-name techchallenge-feedback `
+  --query "Stacks[0].Outputs[?OutputKey=='FeedbackReportsBucketName'].OutputValue" `
+  --output text
+
+Write-Host "Bucket: $bucketName"
+Write-Host ""
+Write-Host "Relatórios disponíveis:"
+aws s3 ls s3://$bucketName/ --recursive
+```
+
+```bash
+# Bash/Linux - Listar relatórios gerados
+BUCKET_NAME=$(aws cloudformation describe-stacks \
+  --stack-name techchallenge-feedback \
+  --query "Stacks[0].Outputs[?OutputKey=='FeedbackReportsBucketName'].OutputValue" \
+  --output text)
+
+echo "Bucket: $BUCKET_NAME"
+echo ""
+echo "Relatórios disponíveis:"
+aws s3 ls s3://$BUCKET_NAME/ --recursive
+```
+
+#### **Passo 6: Baixar e Visualizar o Relatório**
+
+```powershell
+# PowerShell - Baixar último relatório
+$latestReport = aws s3 ls s3://$bucketName/ --recursive | `
+  Sort-Object -Descending | `
+  Select-Object -First 1 | `
+  ForEach-Object { $_.Split()[-1] }
+
+Write-Host "Baixando: $latestReport"
+aws s3 cp s3://$bucketName/$latestReport .\relatorio.txt
+
+Write-Host ""
+Write-Host "=== CONTEÚDO DO RELATÓRIO ===" -ForegroundColor Cyan
+Get-Content .\relatorio.txt
+```
+
+```bash
+# Bash/Linux - Visualizar último relatório
+LATEST_REPORT=$(aws s3 ls s3://$BUCKET_NAME/ --recursive | tail -1 | awk '{print $4}')
+
+echo "Visualizando: $LATEST_REPORT"
+echo ""
+echo "=== CONTEÚDO DO RELATÓRIO ==="
+aws s3 cp s3://$BUCKET_NAME/$LATEST_REPORT -
+```
+
+---
+
+### Teste 5: Script Completo para Gerar Relatório (PowerShell)
+
+Copie e cole este script completo no terminal PowerShell:
+
+```powershell
+# Script completo para gerar e verificar relatório
+Write-Host "🚀 Iniciando geração de relatório..." -ForegroundColor Cyan
+
+# 1. Obter ARN da Step Function
+$stateMachineArn = aws cloudformation describe-stacks `
+  --stack-name techchallenge-feedback `
+  --query "Stacks[0].Outputs[?OutputKey=='FeedbackProcessingStateMachineArn'].OutputValue" `
+  --output text
+
+# 2. Executar Step Function
+$executionName = "manual-exec-$(Get-Date -Format 'yyyyMMddHHmmss')"
+$executionArn = aws stepfunctions start-execution `
+  --state-machine-arn $stateMachineArn `
+  --input '{\"startDate\":\"2026-01-01\",\"endDate\":\"2026-01-10\"}' `
+  --name $executionName `
+  --query 'executionArn' `
+  --output text
+
+Write-Host "✅ Execução iniciada: $executionName" -ForegroundColor Green
+Write-Host ""
+
+# 3. Aguardar processamento
+Write-Host "⏳ Aguardando processamento (15 segundos)..." -ForegroundColor Yellow
+Start-Sleep -Seconds 15
+
+# 4. Verificar status
+$status = aws stepfunctions describe-execution `
+  --execution-arn $executionArn `
+  --query 'status' `
+  --output text
+
+Write-Host ""
+if ($status -eq "SUCCEEDED") {
+    Write-Host "✅ SUCESSO! Relatório gerado e enviado!" -ForegroundColor Green
+    Write-Host "📧 Verifique seu e-mail para ver o relatório." -ForegroundColor Cyan
+    
+    # 5. Mostrar relatório do S3
+    Write-Host ""
+    Write-Host "📄 Listando relatórios no S3..." -ForegroundColor Cyan
+    $bucketName = aws cloudformation describe-stacks `
+      --stack-name techchallenge-feedback `
+      --query "Stacks[0].Outputs[?OutputKey=='FeedbackReportsBucketName'].OutputValue" `
+      --output text
+    
+    aws s3 ls s3://$bucketName/ --recursive --human-readable
+    
+} elseif ($status -eq "RUNNING") {
+    Write-Host "⏳ Ainda processando... Execute novamente em alguns segundos." -ForegroundColor Yellow
+} else {
+    Write-Host "❌ Falha na execução: $status" -ForegroundColor Red
+    aws stepfunctions describe-execution --execution-arn $executionArn
 }
 ```
 
 ---
 
-### Teste 5: Verificar Relatório no S3
+### Teste 6: Verificar Dados no DynamoDB
 
 ```bash
-# Listar relatórios gerados
-aws s3 ls s3://feedback-reports-techchallenge-feedback-XXXXXXXXXXXX/ --recursive
+# Escanear todos os feedbacks na tabela
+aws dynamodb scan --table-name FeedbacksTable --output table
 
-# Baixar e visualizar o relatório
-aws s3 cp s3://feedback-reports-techchallenge-feedback-XXXXXXXXXXXX/weekly-report-2026-01-08.txt -
-```
-
-**Conteúdo esperado do relatório:**
-```
-=== RELATÓRIO SEMANAL DE FEEDBACKS ===
-Data de geração: 2026-01-08
-
-Total de feedbacks: 10
-
-Média geral das notas: 3.50
-
-=== DISTRIBUIÇÃO POR URGÊNCIA ===
-Alta: 3 feedbacks
-Média: 4 feedbacks
-Baixa: 3 feedbacks
-
-=== QUANTIDADE DE AVALIAÇÕES POR DIA ===
-2026-01-07: 3 avaliações
-2026-01-08: 7 avaliações
-
-=== DETALHES DOS FEEDBACKS ===
-1. Nota: 5 | Urgência: MEDIA | Data: 2026-01-08T03:26:02Z
-   Descrição: Excelente atendimento!
-...
+# Verificar apenas os últimos 5 feedbacks
+aws dynamodb scan --table-name FeedbacksTable --limit 5 --output json
 ```
 
 ---
 
-### Teste 6: Verificar Email Recebido
+### Teste 7: Verificar Email Recebido
 
 1. Acesse sua caixa de email
 2. Procure por email com assunto: **"Relatório Semanal de Feedbacks"**
@@ -687,81 +857,276 @@ WeeklyReportScheduleRule:
 
 ---
 
+## 📮 Testes com cURL e Postman
+
+### 🔧 Testando com cURL
+
+#### 1. Criar Feedback Positivo (não gera notificação)
+
 ```bash
-aws dynamodb scan --table-name FeedbacksTable --output table
+curl -X POST "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedback" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "descricao": "Excelente atendimento!",
+    "nota": "5",
+    "urgencia": "MEDIA"
+  }'
 ```
 
-### 4. Ver Logs das Lambdas
+#### 2. Criar Feedback Crítico por Nota (gera notificação)
 
 ```bash
-# Logs da função insert-feedback
-aws logs tail /aws/lambda/insert-feedback --since 5m --format short
+curl -X POST "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedback" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "descricao": "Atendimento muito ruim, tive que esperar 2 horas!",
+    "nota": "1",
+    "urgencia": "MEDIA"
+  }'
+```
 
-# Logs da função send-queue
-aws logs tail /aws/lambda/send-queue --since 5m --format short
+#### 3. Criar Feedback Crítico por Urgência (gera notificação)
 
-# Logs da função notify-critical (apenas feedbacks críticos)
-aws logs tail /aws/lambda/notify-critical --since 5m --format short
+```bash
+curl -X POST "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedback" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "descricao": "Sistema fora do ar, clientes não conseguem fazer pedidos!",
+    "nota": "3",
+    "urgencia": "ALTA"
+  }'
+```
+
+#### 4. Listar Feedbacks com Filtro de Data
+
+```bash
+curl "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedbacks?startDate=2026-01-01&endDate=2026-01-10"
+```
+
+#### 5. Listar Feedbacks com Filtro de Urgência
+
+```bash
+curl "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedbacks?urgency=ALTA&startDate=2026-01-01&endDate=2026-01-10"
+```
+
+**Resposta Esperada (POST):**
+```json
+{
+  "createdAt": "2026-01-08T03:26:02.447Z",
+  "feedbackId": "52e45233-cee4-4d97-a94d-e82436b2683e",
+  "message": "Olá seu feedback foi enviado com sucesso"
+}
+```
+
+**Resposta Esperada (GET):**
+```json
+{
+  "count": 3,
+  "items": [
+    {
+      "feedbackId": "52e45233-cee4-4d97-a94d-e82436b2683e",
+      "pk": "FEEDBACK",
+      "createdAt": "2026-01-08T03:26:02.447Z",
+      "descricao": "Excelente atendimento!",
+      "nota": "5",
+      "urgencia": "MEDIA"
+    }
+  ],
+  "startDate": "2026-01-01",
+  "endDate": "2026-01-10"
+}
 ```
 
 ---
 
-## 📮 Testes com Postman
+### 📬 Testando com Postman
 
-### Passo 1: Importar Collection
+#### Opção 1: Importar Collection Existente (se disponível)
 
 1. Abra o Postman
 2. Clique em **Import** no canto superior esquerdo
-3. Selecione o arquivo `postman_collection.json` deste repositório
-4. A collection "Tech Challenge - Feedbacks API" será importada
+3. Selecione o arquivo `postman_collection.json` deste repositório (se existir)
+4. A collection será importada automaticamente
 
-### Passo 2: Configurar Variáveis de Ambiente
+#### Opção 2: Criar Requisições Manualmente
 
-Na collection, configure as seguintes variáveis:
+##### **1. Criar um Feedback (POST)**
 
-| Variável | Descrição | Valor |
-|----------|-----------|---------|  
-| `api_url` | URL da API Gateway | `https://ooz1z63v31.execute-api.us-east-1.amazonaws.com/Prod/feedback` |
-| `user_pool_id` | ID do Cognito User Pool | `us-east-1_tOiC4wx53` |
-| `client_id` | ID do Cognito Client | `6rqg0qir3728q1eh00smouvm60` |
-| `username` | Email do usuário de teste | `teste@fiap.com` |
-| `password` | Senha do usuário | `FiapTeste123!` |
+**Configuração:**
+- **Método:** POST
+- **URL:** `https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedback`
+  - ⚠️ **Substitua** `xxxxxxxxxx` pela sua URL do API Gateway (obtida no output do `sam deploy`)
+- **Headers:**
+  - `Content-Type: application/json`
+- **Body (raw JSON):**
+  ```json
+  {
+    "descricao": "Produto chegou com defeito",
+    "nota": "2",
+    "urgencia": "ALTA"
+  }
+  ```
 
-### Passo 3: Obter Token JWT
+**Passos no Postman:**
+1. Crie uma nova requisição
+2. Selecione **POST** no dropdown de métodos
+3. Cole a URL no campo de endereço
+4. Vá na aba **Headers** e adicione:
+   - Key: `Content-Type` | Value: `application/json`
+5. Vá na aba **Body**
+6. Selecione **raw** e escolha **JSON** no dropdown
+7. Cole o JSON do body acima
+8. Clique em **Send**
 
-1. Execute a requisição **"1. Get JWT Token"**
-2. O token será automaticamente salvo na variável `id_token`
-3. Todas as outras requisições usarão este token automaticamente
-
-### Passo 4: Enviar Feedbacks
-
-Use as requisições pré-configuradas:
-
-- **2. Send Critical Feedback** - Feedback crítico (gera notificação)
-- **3. Send Low Rating Feedback** - Rating baixo (gera notificação)
-- **4. Send Normal Feedback** - Feedback normal (não gera notificação)
-- **5. Send Positive Feedback** - Feedback positivo (não gera notificação)
-
-### Estrutura da Collection
-
+**Resposta Esperada (Status 200):**
+```json
+{
+  "createdAt": "2026-01-08T14:32:15.223Z",
+  "feedbackId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "message": "Olá seu feedback foi enviado com sucesso"
+}
 ```
-Tech Challenge - Feedbacks API/
-├── 1. Get JWT Token (POST) - Obtém token do Cognito
-├── 2. Send Critical Feedback (POST) - Categoria Critical
-├── 3. Send Low Rating Feedback (POST) - Rating 2
-├── 4. Send Normal Feedback (POST) - Categoria General
-└── 5. Send Positive Feedback (POST) - Rating 5
+
+##### **2. Listar Feedbacks (GET)**
+
+**Configuração:**
+- **Método:** GET
+- **URL:** `https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedbacks`
+- **Query Parameters (aba Params no Postman):**
+  - `startDate`: `2026-01-01`
+  - `endDate`: `2026-01-10`
+  - `urgency`: `ALTA` (opcional)
+  - `limit`: `50` (opcional, padrão: 100)
+
+**Passos no Postman:**
+1. Crie uma nova requisição
+2. Selecione **GET** no dropdown
+3. Cole a URL base no campo de endereço
+4. Vá na aba **Params**
+5. Adicione os parâmetros:
+   - Key: `startDate` | Value: `2026-01-01`
+   - Key: `endDate` | Value: `2026-01-10`
+   - Key: `urgency` | Value: `ALTA` (opcional)
+6. Clique em **Send**
+
+**Resposta Esperada (Status 200):**
+```json
+{
+  "count": 2,
+  "items": [
+    {
+      "feedbackId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "pk": "FEEDBACK",
+      "createdAt": "2026-01-08T14:32:15.223Z",
+      "descricao": "Produto chegou com defeito",
+      "nota": "2",
+      "urgencia": "ALTA"
+    },
+    {
+      "feedbackId": "b2c3d4e5-f6g7-8901-bcde-fg2345678901",
+      "pk": "FEEDBACK",
+      "createdAt": "2026-01-07T10:15:30.456Z",
+      "descricao": "Sistema caiu durante o pagamento",
+      "nota": "1",
+      "urgencia": "ALTA"
+    }
+  ],
+  "startDate": "2026-01-01",
+  "endDate": "2026-01-10",
+  "urgency": "ALTA"
+}
 ```
 
-### Testando Diferentes Cenários
+##### **3. Criar Collection Organizada**
 
-**Feedback Crítico (gera notificação):**
-- `category`: "Critical" OU
-- `rating`: 1 ou 2
+Para organizar melhor seus testes:
 
-**Feedback Normal (não gera notificação):**
-- `category`: "General", "Service", "Suggestion"
-- `rating`: 3, 4 ou 5
+1. Crie uma **Collection** chamada "Tech Challenge - Feedbacks"
+2. Adicione as seguintes requisições:
+   - 📝 **POST Feedback Normal** (nota 4-5, urgência BAIXA/MEDIA)
+   - 🔴 **POST Feedback Crítico por Nota** (nota 1-2)
+   - 🚨 **POST Feedback Crítico por Urgência** (urgência ALTA)
+   - 📋 **GET Listar Todos** (sem filtros)
+   - 🔍 **GET Listar Críticos** (urgency=ALTA)
+   - 📅 **GET Listar por Período** (com startDate e endDate)
+
+##### **4. Usar Variáveis de Ambiente**
+
+Para facilitar a troca de ambientes (dev, prod):
+
+1. Clique no ícone de engrenagem (⚙️) no canto superior direito
+2. Crie um **Environment** chamado "Tech Challenge - Prod"
+3. Adicione a variável:
+   - `base_url`: `https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod`
+4. Use `{{base_url}}` nas URLs:
+   - POST: `{{base_url}}/feedback`
+   - GET: `{{base_url}}/feedbacks`
+
+##### **5. Testar Cenários Diferentes**
+
+**Feedback que GERA notificação (crítico):**
+- ✅ Nota ≤ 2 (independente da urgência)
+- ✅ Urgência = "ALTA" (independente da nota)
+
+**Feedback que NÃO gera notificação:**
+- ❌ Nota ≥ 3 E urgência = "MEDIA" ou "BAIXA"
+
+**Exemplos para testar:**
+
+```json
+// ✅ CRÍTICO - Nota baixa
+{
+  "descricao": "Atendimento péssimo",
+  "nota": "1",
+  "urgencia": "MEDIA"
+}
+
+// ✅ CRÍTICO - Urgência alta
+{
+  "descricao": "Sistema fora do ar",
+  "nota": "3",
+  "urgencia": "ALTA"
+}
+
+// ❌ NORMAL - Não é crítico
+{
+  "descricao": "Entrega demorou um pouco",
+  "nota": "3",
+  "urgencia": "BAIXA"
+}
+
+// ❌ NORMAL - Feedback positivo
+{
+  "descricao": "Adorei o produto!",
+  "nota": "5",
+  "urgencia": "BAIXA"
+}
+```
+
+##### **6. Verificar se Notificação Foi Enviada**
+
+Após enviar um feedback crítico:
+
+1. Aguarde 2-3 segundos
+2. Verifique os logs no terminal:
+   ```bash
+   aws logs tail /aws/lambda/notify-critical --since 1m --format short
+   ```
+3. Procure por mensagens de sucesso ou erro
+4. Verifique sua caixa de e-mail configurada no Mailtrap
+
+---
+
+### 📊 Testando Diferentes Cenários
+
+| Cenário | Nota | Urgência | É Crítico? | Notificação? |
+|---------|------|----------|------------|-------------|
+| Feedback Positivo | 5 | BAIXA | ❌ Não | Não enviada |
+| Feedback Normal | 3 | MEDIA | ❌ Não | Não enviada |
+| Nota Baixa | 2 | BAIXA | ✅ Sim | Enviada |
+| Nota Muito Baixa | 1 | MEDIA | ✅ Sim | Enviada |
+| Urgência Alta | 4 | ALTA | ✅ Sim | Enviada |
+| Crítico Total | 1 | ALTA | ✅ Sim | Enviada |
 
 ---
 
@@ -792,136 +1157,6 @@ Acesse o CloudWatch Console para visualizar:
 
 ---
 
-## 🚨 Troubleshooting
-
-### Erro: ClassNotFoundException
-
-**Problema:** Lambda não encontra a classe Java
-
-**Causa:** O CodeUri no template.yaml estava apontando para o diretório ao invés do JAR
-
-**Solução:** Já corrigido! O template.yaml agora aponta para os JARs corretos:
-```yaml
-CodeUri: insert-feedback/target/insert-feedback-1.0.jar
-```
-
-Se ainda houver erro, recompile e faça redeploy:
-```bash
-mvn clean package
-sam deploy --no-confirm-changeset
-```
-
----
-
-### Erro: "The number of query conditions exceeds..."
-
-**Problema:** Query do DynamoDB sem especificar o índice GSI
-
-**Causa:** Faltava o `.indexName("pk-createdAt-index")` na query
-
-**Solução:** Já corrigido! O código agora usa:
-```java
-QueryRequest.Builder queryBuilder = QueryRequest.builder()
-    .tableName(tableName)
-    .indexName("pk-createdAt-index")  // GSI adicionado
-    .keyConditionExpression("pk = :pk AND createdAt BETWEEN :start AND :end");
-```
-
----
-
-### Email do relatório não chega
-
-**Verificar:**
-
-1. **Email verificado no SES:**
-```bash
-aws ses list-verified-email-addresses
-```
-
-2. **Variável de ambiente configurada:**
-```bash
-aws lambda get-function-configuration --function-name notify-report \
-  --query 'Environment.Variables'
-```
-
-3. **Logs da função:**
-```bash
-aws logs tail /aws/lambda/notify-report --since 10m --format short
-```
-
-4. **Quota do SES:**
-- Contas novas do SES estão em "sandbox mode"
-- Só podem enviar emails para endereços verificados
-- Para produção, solicite saída do sandbox no console SES
-
----
-
-### API retorna "Internal Server Error"
-
-**Verificar:**
-
-1. **Logs da função Lambda:**
-```bash
-aws logs tail /aws/lambda/insert-feedback --since 5m --format short
-```
-
-2. **Código foi atualizado após mudanças:**
-```bash
-mvn clean package
-sam deploy --no-confirm-changeset
-```
-
-3. **Permissões IAM:**
-Verifique no console IAM se as roles das Lambdas têm as policies necessárias
-
----
-
-### Step Function falha
-
-**Verificar execução:**
-```bash
-# Listar execuções com falha
-aws stepfunctions list-executions \
-  --state-machine-arn "arn:aws:states:us-east-1:XXXX:stateMachine:feedback-processing" \
-  --status-filter FAILED
-```
-
-**Ver detalhes do erro:**
-```bash
-# Substituir pelo ARN da execução com falha
-aws stepfunctions describe-execution \
-  --execution-arn "arn:aws:states:us-east-1:XXXX:execution:..."
-```
-
-**Ver histórico de eventos:**
-```bash
-aws stepfunctions get-execution-history \
-  --execution-arn "arn:aws:states:us-east-1:XXXX:execution:..." \
-  --reverse-order
-```
-
----
-
-### DynamoDB não recebe dados
-
-**Verificar:**
-
-1. **Tabela existe:**
-```bash
-aws dynamodb describe-table --table-name FeedbacksTable
-```
-
-2. **Permissões IAM da Lambda insert-feedback:**
-```bash
-aws iam get-role-policy --role-name techchallenge-feedback-InsertFeedbackFunctionRole-XXX --policy-name DynamoDBCrudPolicy
-```
-
-3. **Logs da Lambda:**
-```bash
-aws logs tail /aws/lambda/insert-feedback --since 5m --format short
-```
-
----
 
 ## 🗑️ Limpeza de Recursos
 
@@ -1032,7 +1267,33 @@ Um feedback é considerado **crítico** quando atende a **pelo menos uma** das c
 
 ---
 
-## 📚 Recursos Adicionais
+### AWS CLI - Comandos Úteis
+
+```bash
+# Ver logs em tempo real
+aws logs tail /aws/lambda/insert-feedback --follow
+
+# Listar feedbacks no DynamoDB
+aws dynamodb scan --table-name FeedbacksTable --limit 10
+
+# Executar Step Function manualmente
+aws stepfunctions start-execution \
+  --state-machine-arn "arn:aws:states:REGION:ACCOUNT:stateMachine:feedback-processing" \
+  --input '{"startDate":"2026-01-01","endDate":"2026-01-10"}'
+
+# Ver relatórios no S3
+aws s3 ls s3://feedback-reports-techchallenge-feedback-XXXXXXXXXXXX/
+
+# Verificar email no SES
+aws ses list-verified-email-addresses
+
+# Ver status do stack
+aws cloudformation describe-stacks --stack-name techchallenge-feedback
+```
+
+---
+
+## �📚 Recursos Adicionais
 
 ### Documentação AWS
 - [AWS Lambda Developer Guide](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html)
@@ -1049,17 +1310,6 @@ Um feedback é considerado **crítico** quando atende a **pelo menos uma** das c
 
 ---
 
-## 👥 Contribuindo
-
-Para contribuir com o projeto:
-
-1. Fork este repositório
-2. Crie uma branch para sua feature (`git checkout -b feature/nova-funcionalidade`)
-3. Commit suas mudanças (`git commit -am 'Adiciona nova funcionalidade'`)
-4. Push para a branch (`git push origin feature/nova-funcionalidade`)
-5. Abra um Pull Request
-
----
 
 ## 📝 Licença
 
