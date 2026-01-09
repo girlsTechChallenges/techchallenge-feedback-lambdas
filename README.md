@@ -1639,6 +1639,6 @@ Este projeto foi desenvolvido como parte do **Tech Challenge FIAP - Fase 4**.
 
 **🚀 Sistema Serverless de Feedbacks**
 
-Desenvolvido com ❤️ para o Tech Challenge FIAP
+Desenvolvido por Luana Cherri e Agatha Paiva com ❤️ para o Tech Challenge FIAP
 
 </div>
