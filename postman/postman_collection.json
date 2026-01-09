@@ -53,25 +53,13 @@
       ],
       "request": {
         "auth": {
-          "type": "awsv4",
-          "awsv4": [
-            {
-              "key": "service",
-              "value": "cognito-idp",
-              "type": "string"
-            },
-            {
-              "key": "region",
-              "value": "us-east-1",
-              "type": "string"
-            }
-          ]
+          "type": "noauth"
         },
         "method": "POST",
         "header": [
           {
             "key": "X-Amz-Target",
-            "value": "AWSCognitoIdentityProviderService.AdminInitiateAuth",
+            "value": "AWSCognitoIdentityProviderService.InitiateAuth",
             "type": "text"
           },
           {
@@ -82,7 +70,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n    \"UserPoolId\": \"{{user_pool_id}}\",\n    \"ClientId\": \"{{client_id}}\",\n    \"AuthFlow\": \"ADMIN_NO_SRP_AUTH\",\n    \"AuthParameters\": {\n        \"USERNAME\": \"{{username}}\",\n        \"PASSWORD\": \"{{password}}\"\n    }\n}",
+          "raw": "{\n    \"ClientId\": \"{{client_id}}\",\n    \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n    \"AuthParameters\": {\n        \"USERNAME\": \"{{username}}\",\n        \"PASSWORD\": \"{{password}}\"\n    }\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -141,7 +129,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "{{id_token}}",
+            "value": "Bearer {{id_token}}",
             "type": "text"
           },
           {
@@ -196,7 +184,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "{{id_token}}",
+            "value": "Bearer {{id_token}}",
             "type": "text"
           },
           {
@@ -251,7 +239,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "{{id_token}}",
+            "value": "Bearer {{id_token}}",
             "type": "text"
           },
           {
@@ -307,7 +295,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "{{id_token}}",
+            "value": "Bearer {{id_token}}",
             "type": "text"
           },
           {
@@ -376,6 +364,11 @@
       "request": {
         "method": "GET",
         "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{id_token}}",
+            "type": "text"
+          },
           {
             "key": "Content-Type",
             "value": "application/json",
@@ -460,22 +453,22 @@
     },
     {
       "key": "user_pool_id",
-      "value": "us-east-1_tOiC4wx53",
+      "value": "us-east-1_Etx3Vkioi",
       "type": "string"
     },
     {
       "key": "client_id",
-      "value": "6rqg0qir3728q1eh00smouvm60",
+      "value": "638r9k783e2571ev516nue1eji",
       "type": "string"
     },
     {
       "key": "username",
-      "value": "teste@fiap.com",
+      "value": "test@example.com",
       "type": "string"
     },
     {
       "key": "password",
-      "value": "FiapTeste123!",
+      "value": "TestPass123!",
       "type": "string"
     },
     {

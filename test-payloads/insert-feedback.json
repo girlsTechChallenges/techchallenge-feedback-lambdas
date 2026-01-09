@@ -1,0 +1,10 @@
+{
+  "body": "{\"customerName\":\"João Silva\",\"rating\":5,\"comment\":\"Excelente serviço!\",\"category\":\"Atendimento\"}",
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "email": "test@example.com"
+      }
+    }
+  }
+}

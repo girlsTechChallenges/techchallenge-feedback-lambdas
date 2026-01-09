@@ -10,7 +10,7 @@ Este é um **sistema serverless de gerenciamento de feedbacks** que implementa u
 
 #### **1. insert-feedback (Ponto de Entrada)**
 - Recebe feedbacks via **API Gateway** (POST `/feedback`)
-- **Sem autenticação** (API pública)
+- **Autenticação via AWS Cognito** (Bearer Token JWT)
 - Salva o feedback no **DynamoDB** com:
   - `feedbackId` gerado automaticamente (UUID)
   - `pk` = "FEEDBACK" (para consultas via GSI)
@@ -124,10 +124,18 @@ techchallenge-feedback/
 │   └── target/
 ├── statemachine/                  [Definição Step Functions]
 │   └── feedback-processing.asl.json
+├── postman/                       [Testes Postman]
+│   └── postman_collection.json    [Collection com todas as APIs]
+├── test-payloads/                 [Payloads para testes das Lambdas]
+│   ├── insert-feedback.json
+│   ├── list-feedbacks.json
+│   ├── send-queue.json
+│   ├── notify-critical.json
+│   ├── generate-weekly-report.json
+│   └── notify-report.json
 ├── pom.xml                        [Build multi-módulo Maven]
 ├── template.yaml                  [Infraestrutura AWS SAM]
 ├── samconfig.toml                 [Configurações de deploy]
-├── postman_collection.json        [Collection Postman para testes]
 └── README.md                      [Este arquivo]
 ```
 
@@ -139,12 +147,13 @@ techchallenge-feedback/
 - **template.yaml** → Template AWS SAM que declara funções Lambda, permissões e recursos necessários.
 - **samconfig.toml** → Configurações de deploy do SAM (gerado automaticamente após primeiro deploy).
 - **pom.xml (raiz)** → Build multimódulo Maven que compila todas as 6 Lambdas.
-- **postman_collection.json** → Collection Postman com requisições prontas para testar as APIs.
 
 ### Pastas de Organização
 
 - **docs/** → Documentação adicional e histórico de testes realizados.
-- **examples/** → Arquivos JSON de exemplo para testes e referência de payloads.
+- **postman/** → Collection Postman com todas as requisições prontas para testar as APIs.
+- **test-payloads/** → Payloads JSON para testar cada Lambda individualmente via AWS CLI.
+- **examples/** → Arquivos JSON de exemplo para referência de estrutura de dados.
 - **events/** → Eventos de teste para invocar Lambdas localmente com SAM CLI.
 
 ---
@@ -596,35 +605,242 @@ aws lambda update-function-configuration \
 
 ---
 
+## 🔐 Autenticação com AWS Cognito
+
+O sistema utiliza **AWS Cognito User Pool** para autenticar usuários e proteger os endpoints da API. Todos os requests para `/feedback` e `/feedbacks` requerem um token JWT válido no header `Authorization`.
+
+### Configuração Inicial do Cognito
+
+Após o deploy, o sistema cria automaticamente:
+- **Cognito User Pool** para gerenciar usuários
+- **User Pool Client** para autenticação
+- **API Gateway Authorizer** que valida tokens JWT
+
+### Scripts de Gerenciamento
+
+O projeto inclui scripts PowerShell para facilitar o gerenciamento de usuários. Navegue até a pasta `cognito-scripts`:
+
+```powershell
+cd cognito-scripts
+```
+
+#### Criar Usuário
+
+```powershell
+.\manage-users.ps1 -Action create -Email "usuario@example.com" -Password "SenhaForte123!" -Name "Nome Completo"
+```
+
+**Requisitos de senha:**
+- Mínimo 8 caracteres
+- Pelo menos 1 letra maiúscula
+- Pelo menos 1 letra minúscula
+- Pelo menos 1 número
+- Pelo menos 1 caractere especial (!@#$%^&*)
+
+#### Fazer Login e Obter Token
+
+```powershell
+.\manage-users.ps1 -Action login -Email "usuario@example.com" -Password "SenhaForte123!"
+```
+
+**Saída:**
+```
+=== TOKENS ===
+IdToken (use este para Authorization header):
+eyJraWQiOiJ... [token completo]
+
+AccessToken:
+eyJraWQiOiJ... [token completo]
+
+RefreshToken:
+eyJjdHkiOiJ... [token completo]
+
+Expira em: 3600 segundos
+
+ℹ IdToken salvo em: .\cognito-token.txt
+```
+
+O IdToken é automaticamente salvo em `cognito-token.txt` para facilitar o uso.
+
+#### Listar Usuários
+
+```powershell
+.\manage-users.ps1 -Action list
+```
+
+#### Deletar Usuário
+
+```powershell
+.\manage-users.ps1 -Action delete -Email "usuario@example.com"
+```
+
+### Testando API com Autenticação
+
+Use o script de teste automatizado:
+
+#### Inserir Feedback Autenticado
+
+```powershell
+.\test-api-with-auth.ps1 -Action insert -Email "usuario@example.com" -Password "SenhaForte123!"
+```
+
+#### Listar Feedbacks Autenticados
+
+```powershell
+.\test-api-with-auth.ps1 -Action list -Email "usuario@example.com" -Password "SenhaForte123!"
+```
+
+### Testes Manuais com cURL/PowerShell
+
+#### PowerShell:
+
+```powershell
+# 1. Obter token
+$token = Get-Content ".\cognito-scripts\cognito-token.txt" -Raw
+
+# 2. Criar feedback
+$apiUrl = "https://sua-api-id.execute-api.us-east-1.amazonaws.com/Prod/feedback"
+$body = @{
+    descricao = "Feedback autenticado!"
+    nota = "5"
+    urgencia = "MEDIA"
+} | ConvertTo-Json
+
+$headers = @{
+    "Authorization" = "Bearer $token"
+    "Content-Type" = "application/json"
+}
+
+Invoke-RestMethod -Uri $apiUrl -Method POST -Headers $headers -Body $body
+
+# 3. Listar feedbacks
+$listUrl = "https://sua-api-id.execute-api.us-east-1.amazonaws.com/Prod/feedbacks"
+Invoke-RestMethod -Uri "$listUrl?startDate=2026-01-01&endDate=2026-01-31" -Method GET -Headers $headers
+```
+
+#### Bash/Linux:
+
+```bash
+# 1. Obter token (faça login primeiro com o script PowerShell)
+TOKEN=$(cat ./cognito-scripts/cognito-token.txt)
+
+# 2. Criar feedback
+curl -X POST "https://sua-api-id.execute-api.us-east-1.amazonaws.com/Prod/feedback" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "descricao": "Feedback autenticado!",
+    "nota": "5",
+    "urgencia": "MEDIA"
+  }'
+
+# 3. Listar feedbacks
+curl -X GET "https://sua-api-id.execute-api.us-east-1.amazonaws.com/Prod/feedbacks?startDate=2026-01-01&endDate=2026-01-31" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Testando sem Autenticação (Erro Esperado)
+
+```powershell
+# Tentar criar feedback sem token
+$apiUrl = "https://sua-api-id.execute-api.us-east-1.amazonaws.com/Prod/feedback"
+Invoke-RestMethod -Uri $apiUrl -Method POST -Body (@{descricao="Teste"} | ConvertTo-Json) -ContentType "application/json"
+```
+
+**Resposta esperada (401 Unauthorized):**
+```json
+{
+  "message": "Unauthorized"
+}
+```
+
+### Renovar Token Expirado
+
+Os tokens IdToken e AccessToken expiram em **1 hora**. O RefreshToken é válido por **30 dias**.
+
+Para obter novos tokens, basta fazer login novamente:
+
+```powershell
+.\cognito-scripts\manage-users.ps1 -Action login -Email "usuario@example.com" -Password "SenhaForte123!"
+```
+
+### Obter IDs do Cognito
+
+Se precisar dos IDs manualmente:
+
+```powershell
+# User Pool ID
+aws cloudformation describe-stacks `
+  --stack-name techchallenge-feedback-lambdas `
+  --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" `
+  --output text
+
+# User Pool Client ID
+aws cloudformation describe-stacks `
+  --stack-name techchallenge-feedback-lambdas `
+  --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolClientId'].OutputValue" `
+  --output text
+```
+
+### Usando Postman
+
+1. **Importe a collection**: `postman/postman_collection.json`
+
+2. **Configure as variáveis** (já vêm pré-configuradas nos exemplos):
+   - `user_pool_id`: ID do Cognito User Pool  
+   - `client_id`: ID do Cognito Client
+   - `username`: Email do usuário
+   - `password`: Senha do usuário
+
+3. **Execute "1. Get JWT Token"** - O token será salvo automaticamente
+
+4. **Execute os outros requests** - O token é incluído automaticamente no header Authorization
+
+---
+
 ## 🧪 Testando o Sistema
 
 ### Teste 1: Criar Feedback via API (POST)
 
+> ⚠️ **IMPORTANTE**: A API agora requer autenticação Cognito. Veja a seção **"🔐 Autenticação com AWS Cognito"** acima para obter um token JWT antes de fazer requests.
+
 #### Usando PowerShell:
 
 ```powershell
-# Definir a URL da API (substitua pela sua URL do output)
+# 1. Obter token (veja seção de autenticação)
+$token = Get-Content ".\cognito-scripts\cognito-token.txt" -Raw
+
+# 2. Definir a URL da API (substitua pela sua URL do output)
 $apiUrl = "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedback"
 
-# Criar um feedback
+# 3. Criar um feedback
 $body = @{
     descricao = "Excelente atendimento!"
     nota = "5"
     urgencia = "MEDIA"
 } | ConvertTo-Json
 
-$response = Invoke-RestMethod -Uri $apiUrl -Method POST -ContentType "application/json" -Body $body
+$headers = @{
+    "Authorization" = "Bearer $token"
+    "Content-Type" = "application/json"
+}
+
+$response = Invoke-RestMethod -Uri $apiUrl -Method POST -Headers $headers -Body $body
 $response
 ```
 
 #### Usando Bash/Linux:
 
 ```bash
-# Definir a URL da API (substitua pela sua URL do output)
+# 1. Obter token (veja seção de autenticação)
+TOKEN=$(cat ./cognito-scripts/cognito-token.txt)
+
+# 2. Definir a URL da API (substitua pela sua URL do output)
 API_URL="https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedback"
 
-# Criar um feedback
+# 3. Criar um feedback
 curl -X POST "$API_URL" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "descricao": "Excelente atendimento!",
@@ -646,30 +862,43 @@ curl -X POST "$API_URL" \
 
 ### Teste 2: Listar Feedbacks via API (GET)
 
+> ⚠️ **IMPORTANTE**: A API agora requer autenticação Cognito. Use o token obtido na seção de autenticação.
+
 #### Usando PowerShell:
 
 ```powershell
-# Definir a URL da API (substitua pela sua URL do output)
+# 1. Obter token
+$token = Get-Content ".\cognito-scripts\cognito-token.txt" -Raw
+
+# 2. Definir a URL da API (substitua pela sua URL do output)
 $apiUrl = "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedbacks"
 
-# Listar feedbacks entre datas
+# 3. Listar feedbacks entre datas
 $params = @{
     startDate = "2026-01-01"
     endDate = "2026-01-10"
 }
 
-$response = Invoke-RestMethod -Uri $apiUrl -Method GET -Body $params
+$headers = @{
+    "Authorization" = "Bearer $token"
+}
+
+$response = Invoke-RestMethod -Uri $apiUrl -Method GET -Body $params -Headers $headers
 $response
 ```
 
 #### Usando Bash/Linux:
 
 ```bash
-# Definir a URL da API
+# 1. Obter token
+TOKEN=$(cat ./cognito-scripts/cognito-token.txt)
+
+# 2. Definir a URL da API
 API_URL="https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedbacks"
 
-# Listar feedbacks entre datas
-curl "$API_URL?startDate=2026-01-01&endDate=2026-01-10"
+# 3. Listar feedbacks entre datas
+curl "$API_URL?startDate=2026-01-01&endDate=2026-01-10" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 **Resposta esperada:**
@@ -1135,7 +1364,7 @@ curl "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/feedbacks?urge
 
 1. Abra o Postman
 2. Clique em **Import** no canto superior esquerdo
-3. Selecione o arquivo `postman_collection.json` deste repositório (se existir)
+3. Selecione o arquivo `postman/postman_collection.json` deste repositório
 4. A collection será importada automaticamente
 
 #### Opção 2: Criar Requisições Manualmente
@@ -1629,10 +1858,10 @@ void testSuccessScenario() {
 ## 📈 Melhorias Futuras
 
 ### Segurança
-- [ ] Reativar autenticação Cognito nas APIs
-- [ ] Implementar API Keys para controle de acesso
-- [ ] Adicionar WAF no API Gateway
+- [x] ✅ **Autenticação Cognito nas APIs** (IMPLEMENTADO - veja seção "🔐 Autenticação com AWS Cognito")
+- [ ] Adicionar WAF no API Gateway para proteção contra ataques
 - [ ] Habilitar encryption at rest no DynamoDB
+- [ ] Implementar rate limiting por usuário
 
 ### Funcionalidades
 - [ ] Dashboard web para visualização de feedbacks

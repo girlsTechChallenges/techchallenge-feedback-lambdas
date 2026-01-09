@@ -1,0 +1,9 @@
+{
+  "feedbackId": "test-123",
+  "customerName": "Cliente Insatisfeito",
+  "rating": 1,
+  "comment": "Péssimo atendimento",
+  "category": "Atendimento",
+  "urgency": "critica",
+  "createdAt": "2026-01-08T23:00:00Z"
+}

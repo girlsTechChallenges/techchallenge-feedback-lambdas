@@ -13,21 +13,29 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.model.ScanRequest;
+import software.amazon.awssdk.services.dynamodb.model.ScanResponse;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
-import java.util.OptionalDouble;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class GenerateWeeklyReportFunction implements RequestHandler<Map<String, Object>, String> {
 
     private final S3Client s3;
+    private final DynamoDbClient dynamoDB;
     private final String bucketName;
+    private final String tableName;
 
     public GenerateWeeklyReportFunction() {
+        this.dynamoDB = DynamoDbClient.builder()
+            .region(Region.US_EAST_1)
+            .build();
+        this.tableName = System.getenv("TABLE_NAME");
         String s3Endpoint = System.getenv("S3_ENDPOINT");
         String accessKey = System.getenv("AWS_ACCESS_KEY_ID");
         String secretKey = System.getenv("AWS_SECRET_ACCESS_KEY");
@@ -61,8 +69,8 @@ public class GenerateWeeklyReportFunction implements RequestHandler<Map<String, 
         logger.log("Iniciando geração do relatório semanal...\n");
 
         try {
-            // Exemplo: feedbacks recebidos da Lambda A
-            List<Map<String, Object>> feedbacks = (List<Map<String, Object>>) input.get("feedbacks");
+            // Buscar TODOS os feedbacks do DynamoDB
+            List<Map<String, Object>> feedbacks = getAllFeedbacksFromDynamoDB(logger);
 
             // Verificar se o bucket existe, criar se necessário
             try {
@@ -202,5 +210,47 @@ public class GenerateWeeklyReportFunction implements RequestHandler<Map<String, 
         }
 
         return report.toString();
+    }
+
+    private List<Map<String, Object>> getAllFeedbacksFromDynamoDB(LambdaLogger logger) {
+        logger.log("Buscando feedbacks do DynamoDB...\n");
+        
+        ScanRequest scanRequest = ScanRequest.builder()
+            .tableName(tableName)
+            .build();
+        
+        ScanResponse response = dynamoDB.scan(scanRequest);
+        logger.log("Total de feedbacks encontrados: " + response.count() + "\n");
+        
+        List<Map<String, Object>> feedbacks = new ArrayList<>();
+        
+        for (Map<String, AttributeValue> item : response.items()) {
+            Map<String, Object> feedback = new HashMap<>();
+            
+            // Extrair campos do DynamoDB
+            if (item.containsKey("rating")) {
+                feedback.put("nota", item.get("rating").n());
+            }
+            if (item.containsKey("urgency")) {
+                feedback.put("urgency", item.get("urgency").s());
+            } else {
+                feedback.put("urgency", "baixa");
+            }
+            if (item.containsKey("createdAt")) {
+                feedback.put("createdAt", item.get("createdAt").s());
+            }
+            if (item.containsKey("comment")) {
+                feedback.put("descricao", item.get("comment").s());
+            } else if (item.containsKey("descricao")) {
+                feedback.put("descricao", item.get("descricao").s());
+            }
+            if (item.containsKey("feedbackId")) {
+                feedback.put("feedbackId", item.get("feedbackId").s());
+            }
+            
+            feedbacks.add(feedback);
+        }
+        
+        return feedbacks;
     }
 }

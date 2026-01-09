@@ -169,23 +169,6 @@ Um feedback é considerado **crítico** quando:
 
 ---
 
-## 🚨 Troubleshooting
-
-### Lambda retorna ClassNotFoundException
-- Certifique-se de que compilou com `mvn clean package`
-- Atualize o código com: `aws lambda update-function-code --function-name <nome> --zip-file fileb://target/<nome>-1.0.jar`
-
-### Notificação não enviada
-- Verifique se o feedback é crítico (category="Critical" OU rating<=2)
-- Confira logs: `aws logs tail /aws/lambda/notify-critical --since 10m`
-- Verifique token Mailtrap em [notify-critical/src/main/java/lambda/NotifyCriticalFunction.java](notify-critical/src/main/java/lambda/NotifyCriticalFunction.java#L73)
-
-### Erro de autenticação
-- Verifique se o token JWT não expirou (válido por 1 hora)
-- Gere novo token com o comando da seção "Obter Token de Autenticação"
-
----
-
 ## 📧 Contato
 
 Tech Challenge FIAP - Fase 4  

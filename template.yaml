@@ -277,16 +277,93 @@ Resources:
                 Resource: !GetAtt FeedbackProcessingStateMachine.Arn
 
   # Cognito User Pool
-  # API Gateway (sem autenticação)
+  # Cognito User Pool para autenticação
+  FeedbackUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-user-pool"
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: false
+          Required: true
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate:
+          - email
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  # Cognito User Pool Client
+  FeedbackUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-client"
+      UserPoolId: !Ref FeedbackUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+
+  # API Gateway com autenticação Cognito
   MyApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt FeedbackUserPool.Arn
 
 Outputs:
   FeedbackApiUrl:
-    Description: URL da API de feedback (sem autenticação)
+    Description: URL da API de feedback (protegida por Cognito)
     Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedback"
+
+  CognitoUserPoolId:
+    Description: ID do Cognito User Pool
+    Value: !Ref FeedbackUserPool
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolId"
+
+  CognitoUserPoolClientId:
+    Description: ID do Cognito User Pool Client
+    Value: !Ref FeedbackUserPoolClient
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolClientId"
+
+  CognitoUserPoolArn:
+    Description: ARN do Cognito User Pool
+    Value: !GetAtt FeedbackUserPool.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolArn"
 
   InsertFeedbackFunctionArn:
     Description: ARN da função insert-feedback
@@ -321,5 +398,5 @@ Outputs:
     Value: !GetAtt FeedbackProcessingStateMachine.Arn
 
   ListFeedbacksApiUrl:
-    Description: URL da API para listar feedbacks
+    Description: URL da API para listar feedbacks (protegida por Cognito)
     Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/feedbacks"
