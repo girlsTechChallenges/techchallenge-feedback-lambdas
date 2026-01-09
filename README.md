@@ -62,31 +62,35 @@ Este é um **sistema serverless de gerenciamento de feedbacks** que implementa u
 
 ```
 techchallenge-feedback/
-├── events/
+├── docs/                          [Documentação do projeto]
+│   └── TESTES_REALIZADOS.md       [Histórico de testes executados]
+├── examples/                      [Exemplos de payloads de teste]
+│   ├── response.json              [Exemplo de resposta da API]
+│   ├── test-payload.json          [Payload para invoke local]
+│   ├── test-post.json             [Exemplo de POST request]
+│   └── test2.json                 [Outro exemplo de teste]
+├── events/                        [Eventos para testes SAM local]
 │   ├── event.json
 │   ├── invoke-payload.json
 │   └── notify-event.json
-├── insert-feedback/
+├── insert-feedback/               [Lambda: Inserir Feedback]
 │   ├── pom.xml
-│   ├── Makefile
 │   ├── src/
 │   │   ├── main/java/lambda/
 │   │   │   └── InsertFeedbackFunction.java
 │   │   └── test/java/lambda/
 │   │       └── InsertFeedbackFunctionTest.java
 │   └── target/
-├── send-queue/
+├── send-queue/                    [Lambda: Processar DynamoDB Stream]
 │   ├── pom.xml
-│   ├── Makefile
 │   ├── src/
 │   │   ├── main/java/lambda/
 │   │   │   └── SendQueueFunction.java
 │   │   └── test/java/lambda/
 │   │       └── SendQueueFunctionTest.java
 │   └── target/
-├── notify-critical/
+├── notify-critical/               [Lambda: Notificar Feedbacks Críticos]
 │   ├── pom.xml
-│   ├── Makefile
 │   ├── src/
 │   │   ├── main/java/lambda/
 │   │   │   ├── FeedbackEvent.java
@@ -94,47 +98,54 @@ techchallenge-feedback/
 │   │   └── test/java/lambda/
 │   │       └── NotifyCriticalFunctionTest.java
 │   └── target/
-├── list-feedbacks/
+├── list-feedbacks/                [Lambda: Listar Feedbacks]
 │   ├── pom.xml
-│   ├── Makefile
 │   ├── src/
 │   │   ├── main/java/lambda/
 │   │   │   └── ListFeedbacksFunction.java
 │   │   └── test/java/lambda/
+│   │       └── ListFeedbacksFunctionTest.java
 │   └── target/
-├── generate-weekly-report/
+├── generate-weekly-report/        [Lambda: Gerar Relatório Semanal]
 │   ├── pom.xml
-│   ├── Makefile
 │   ├── src/
 │   │   ├── main/java/lambda/
 │   │   │   └── GenerateWeeklyReportFunction.java
 │   │   └── test/java/lambda/
+│   │       └── GenerateWeeklyReportFunctionTest.java
 │   └── target/
-├── notify-report/
+├── notify-report/                 [Lambda: Enviar Relatório por Email]
 │   ├── pom.xml
-│   ├── Makefile
 │   ├── src/
 │   │   ├── main/java/lambda/
 │   │   │   └── NotifyReportFunction.java
 │   │   └── test/java/lambda/
+│   │       └── NotifyReportFunctionTest.java
 │   └── target/
-├── statemachine/
+├── statemachine/                  [Definição Step Functions]
 │   └── feedback-processing.asl.json
-├── pom.xml
-├── template.yaml
-├── samconfig.toml
-└── README.md
+├── pom.xml                        [Build multi-módulo Maven]
+├── template.yaml                  [Infraestrutura AWS SAM]
+├── samconfig.toml                 [Configurações de deploy]
+├── postman_collection.json        [Collection Postman para testes]
+└── README.md                      [Este arquivo]
 ```
 
 ---
 
 
-## 📂 Arquivos importantes
+## 📂 Arquivos Principais
 
 - **template.yaml** → Template AWS SAM que declara funções Lambda, permissões e recursos necessários.
-- **samconfig.toml** → Configurações de deploy do SAM (opcional).
-- **events/event.json** → Exemplo de evento para invocar localmente a função.
-- **pom.xml (raiz)** → Build multimódulo Maven.
+- **samconfig.toml** → Configurações de deploy do SAM (gerado automaticamente após primeiro deploy).
+- **pom.xml (raiz)** → Build multimódulo Maven que compila todas as 6 Lambdas.
+- **postman_collection.json** → Collection Postman com requisições prontas para testar as APIs.
+
+### Pastas de Organização
+
+- **docs/** → Documentação adicional e histórico de testes realizados.
+- **examples/** → Arquivos JSON de exemplo para testes e referência de payloads.
+- **events/** → Eventos de teste para invocar Lambdas localmente com SAM CLI.
 
 ---
 
@@ -279,7 +290,182 @@ aws --version    # Deve mostrar AWS CLI
 
 ---
 
-## 🚀 Executando o Projeto Completo
+## � Build e Deploy
+
+### Opção 1: Script Automatizado (Recomendado)
+
+Use os scripts prontos para compilar e fazer deploy de forma automatizada:
+
+#### **Windows (PowerShell)**
+```powershell
+# Build completo + Deploy
+.\build-and-deploy.ps1
+
+# Build sem testes + Deploy
+.\build-and-deploy.ps1 -SkipTests
+
+# Apenas Build (sem deploy)
+.\build-and-deploy.ps1 -BuildOnly
+
+# Apenas Deploy (pula compilação)
+.\build-and-deploy.ps1 -DeployOnly
+```
+
+#### **Linux/Mac (Bash)**
+```bash
+# Dar permissão de execução (primeira vez)
+chmod +x build-and-deploy.sh
+
+# Build completo + Deploy
+./build-and-deploy.sh
+
+# Build sem testes + Deploy
+./build-and-deploy.sh --skip-tests
+
+# Apenas Build (sem deploy)
+./build-and-deploy.sh --build-only
+
+# Apenas Deploy (pula compilação)
+./build-and-deploy.sh --deploy-only
+```
+
+**O que os scripts fazem:**
+1. ✅ Verificam se Maven e SAM CLI estão instalados
+2. ✅ Compilam todos os 6 módulos Lambda de uma vez
+3. ✅ Executam testes unitários (ou pulam se usar `--SkipTests`)
+4. ✅ Fazem build com SAM CLI
+5. ✅ Fazem deploy automático na AWS
+6. ✅ Mostram próximos passos após deploy
+
+---
+
+### Opção 2: Comandos Manuais
+
+Se preferir executar passo a passo:
+
+#### **Build de Todos os Módulos**
+```bash
+# Na raiz do projeto - compila TODOS os 6 módulos
+mvn clean package
+
+# Sem executar testes
+mvn clean package -DskipTests
+
+# Apenas executar testes
+mvn test
+
+# Com relatório de cobertura
+mvn clean test jacoco:report
+```
+
+**Saída esperada:**
+```
+[INFO] Reactor Summary for techchallenge-feedback 1.0:
+[INFO]
+[INFO] techchallenge-feedback ............................. SUCCESS
+[INFO] Lambda Insert Feedback ............................. SUCCESS
+[INFO] Lambda Send Queue .................................. SUCCESS
+[INFO] Lambda Notify Critical ............................. SUCCESS
+[INFO] Lambda List Feedbacks .............................. SUCCESS
+[INFO] Lambda Generate Weekly Report ...................... SUCCESS
+[INFO] Lambda Notify Report ............................... SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+```
+
+#### **Build de um Módulo Específico**
+```bash
+# Navegar até o módulo
+cd insert-feedback
+mvn clean package
+
+# Ou executar da raiz com -pl
+mvn clean package -pl insert-feedback
+
+# Módulos disponíveis:
+# - insert-feedback
+# - send-queue
+# - notify-critical
+# - list-feedbacks
+# - generate-weekly-report
+# - notify-report
+```
+
+#### **Deploy com AWS SAM**
+```bash
+# Build com SAM (prepara para deploy)
+sam build
+
+# Deploy guiado (primeira vez)
+sam deploy --guided
+
+# Deploy automático (usa samconfig.toml)
+sam deploy
+
+# Deploy sem confirmação
+sam deploy --no-confirm-changeset
+```
+
+---
+
+### 📊 Verificar Resultado do Deploy
+
+Após o deploy, obtenha as informações do stack:
+
+#### **Bash/Linux**
+```bash
+# Ver todos os outputs do stack
+aws cloudformation describe-stacks \
+  --stack-name techchallenge-feedback \
+  --query 'Stacks[0].Outputs' \
+  --output table
+
+# Obter apenas a URL da API de feedback
+aws cloudformation describe-stacks \
+  --stack-name techchallenge-feedback \
+  --query "Stacks[0].Outputs[?OutputKey=='FeedbackApiUrl'].OutputValue" \
+  --output text
+
+# Obter apenas a URL da API de listagem
+aws cloudformation describe-stacks \
+  --stack-name techchallenge-feedback \
+  --query "Stacks[0].Outputs[?OutputKey=='ListFeedbacksApiUrl'].OutputValue" \
+  --output text
+
+# Obter ARN da Step Function
+aws cloudformation describe-stacks \
+  --stack-name techchallenge-feedback \
+  --query "Stacks[0].Outputs[?OutputKey=='FeedbackProcessingStateMachineArn'].OutputValue" \
+  --output text
+```
+
+#### **PowerShell/Windows**
+```powershell
+# Ver todos os outputs do stack
+aws cloudformation describe-stacks `
+  --stack-name techchallenge-feedback `
+  --query 'Stacks[0].Outputs' `
+  --output table
+
+# Obter URLs e salvar em variáveis
+$apiUrl = aws cloudformation describe-stacks `
+  --stack-name techchallenge-feedback `
+  --query "Stacks[0].Outputs[?OutputKey=='FeedbackApiUrl'].OutputValue" `
+  --output text
+
+$listUrl = aws cloudformation describe-stacks `
+  --stack-name techchallenge-feedback `
+  --query "Stacks[0].Outputs[?OutputKey=='ListFeedbacksApiUrl'].OutputValue" `
+  --output text
+
+Write-Host "API Feedback: $apiUrl"
+Write-Host "API Listagem: $listUrl"
+```
+
+---
+
+## �🚀 Executando o Projeto Completo
 
 ### Passo 1: Compilar o Projeto
 
@@ -313,7 +499,11 @@ Este comando irá:
 
 ---
 
-### Passo 2: Verificar o Email no Amazon SES
+## 🚀 Deploy na AWS
+
+Agora que você já sabe como compilar o projeto, vamos fazer o deploy na AWS.
+
+### Passo 1: Verificar o Email no Amazon SES
 
 Antes de fazer o deploy, você precisa verificar o endereço de email que receberá os relatórios:
 
@@ -331,7 +521,7 @@ aws ses list-verified-email-addresses
 
 ---
 
-### Passo 3: Validar o Template SAM
+### Passo 2: Validar o Template SAM
 
 ```bash
 sam validate
@@ -344,7 +534,7 @@ template.yaml is a valid SAM Template
 
 ---
 
-### Passo 4: Deploy com SAM
+### Passo 3: Deploy com SAM
 
 Execute o deploy usando o comando:
 
@@ -394,7 +584,7 @@ Value               arn:aws:states:us-east-1:XXXXXXXXXXXX:stateMachine:feedback-
 
 ---
 
-### Passo 5: Configurar Variável de Ambiente (Email do Relatório)
+### Passo 4: Configurar Variável de Ambiente (Email do Relatório)
 
 Atualize a função `notify-report` com o email verificado:
 
@@ -1235,6 +1425,204 @@ Um feedback é considerado **crítico** quando atende a **pelo menos uma** das c
 **Ações automáticas:**
 - Evento publicado no EventBridge com `isCritical: true`
 - Lambda `notify-critical` pode enviar notificação à equipe
+
+---
+
+## 🧪 Testes Unitários
+
+O projeto possui **cobertura completa de testes unitários** para todas as 6 funções Lambda, utilizando **JUnit 5** e **Mockito** para criar mocks dos serviços AWS.
+
+### 📊 Cobertura de Testes Alcançada
+
+| Lambda | Arquivo de Teste | Testes | Cobertura |
+|--------|-----------------|--------|-----------|
+| **insert-feedback** | `InsertFeedbackFunctionTest.java` | 5 testes | ✅ 100% |
+| **send-queue** | `SendQueueFunctionTest.java` | 4 testes | ✅ 100% |
+| **notify-critical** | `NotifyCriticalFunctionTest.java` | 4 testes | ✅ 100% |
+| **list-feedbacks** | `ListFeedbacksFunctionTest.java` | 4 testes | ✅ 100% |
+| **generate-weekly-report** | `GenerateWeeklyReportFunctionTest.java` | 4 testes | ✅ 100% |
+| **notify-report** | `NotifyReportFunctionTest.java` | 6 testes | ✅ 100% |
+
+**Total:** 27 testes unitários cobrindo todos os fluxos principais, casos de erro e validações.
+
+---
+
+### 🔍 Cenários Testados por Lambda
+
+#### **1. insert-feedback** (InsertFeedbackFunctionTest)
+- ✅ Criação de feedback com sucesso
+- ✅ Geração automática de UUID para feedbackId
+- ✅ Persistência no DynamoDB com timestamp
+- ✅ Validação de campos obrigatórios
+- ✅ Tratamento de erros do DynamoDB
+
+#### **2. send-queue** (SendQueueFunctionTest)
+- ✅ Detecção de feedback crítico por nota baixa (≤2)
+- ✅ Detecção de feedback crítico por urgência "Critical"
+- ✅ Publicação de evento no EventBridge com flag `isCritical`
+- ✅ Processamento de múltiplos registros do DynamoDB Stream
+
+#### **3. notify-critical** (NotifyCriticalFunctionTest)
+- ✅ Envio de email via Mailtrap para feedbacks críticos
+- ✅ Formatação correta do corpo do email
+- ✅ Validação de dados do feedback
+- ✅ Tratamento de erros de envio
+
+#### **4. list-feedbacks** (ListFeedbacksFunctionTest)
+- ✅ Listagem de feedbacks do DynamoDB
+- ✅ Filtro por urgência (Critical, High, Medium, Low)
+- ✅ Integração com API Gateway (query parameters)
+- ✅ Retorno de lista vazia quando não há feedbacks
+
+#### **5. generate-weekly-report** (GenerateWeeklyReportFunctionTest)
+- ✅ Geração de relatório e upload para S3
+- ✅ Criação automática de bucket se não existir
+- ✅ Cálculo de estatísticas (média de notas, distribuição)
+- ✅ Geração de relatório mesmo com lista vazia
+
+#### **6. notify-report** (NotifyReportFunctionTest)
+- ✅ Leitura de relatório do S3
+- ✅ Envio por email via Amazon SES
+- ✅ Validação de parâmetros obrigatórios (reportKey)
+- ✅ Log detalhado de envio de email
+- ✅ Tratamento de erro ao ler do S3
+- ✅ Tratamento de erro ao enviar email via SES
+
+---
+
+### ⚡ Comandos para Executar os Testes
+
+#### **Executar TODOS os testes do projeto**
+```bash
+# Maven - Raiz do projeto (testa todos os módulos)
+mvn clean test
+```
+
+**Saída esperada:**
+```
+[INFO] Reactor Summary for techchallenge-feedback 1.0:
+[INFO]
+[INFO] Lambda Insert Feedback ............................. SUCCESS
+[INFO] Lambda Send Queue .................................. SUCCESS
+[INFO] Lambda Notify Critical ............................. SUCCESS
+[INFO] Lambda List Feedbacks .............................. SUCCESS
+[INFO] Lambda Generate Weekly Report ...................... SUCCESS
+[INFO] Lambda Notify Report ............................... SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  15.432 s
+[INFO] Tests run: 27, Failures: 0, Errors: 0, Skipped: 0
+```
+
+---
+
+#### **Executar testes de uma Lambda específica**
+
+```bash
+# Testar apenas insert-feedback
+cd insert-feedback
+mvn test
+
+# Testar apenas send-queue
+cd send-queue
+mvn test
+
+# Testar apenas notify-critical
+cd notify-critical
+mvn test
+
+# Testar apenas list-feedbacks
+cd list-feedbacks
+mvn test
+
+# Testar apenas generate-weekly-report
+cd generate-weekly-report
+mvn test
+
+# Testar apenas notify-report
+cd notify-report
+mvn test
+```
+
+---
+
+#### **Executar testes com relatório de cobertura**
+
+Para gerar relatório de cobertura com **JaCoCo**:
+
+```bash
+# Executar testes com cobertura
+mvn clean test jacoco:report
+
+# Ver relatório HTML (substitua pelo módulo desejado)
+start insert-feedback/target/site/jacoco/index.html  # Windows
+open insert-feedback/target/site/jacoco/index.html   # macOS
+xdg-open insert-feedback/target/site/jacoco/index.html  # Linux
+```
+
+---
+
+#### **Executar testes em modo de observação (watch)**
+
+Para executar testes automaticamente ao modificar o código:
+
+```bash
+# Instalar Maven Wrapper Watch (se não tiver)
+mvn wrapper:wrapper
+
+# Executar em watch mode
+mvn fizzed-watcher:run
+```
+
+---
+
+### 🛠️ Tecnologias de Teste Utilizadas
+
+- **JUnit 5** (Jupiter) - Framework de testes
+- **Mockito** - Criação de mocks para AWS SDK
+- **AWS SDK v2** - Clientes mockados (DynamoDB, S3, SES, EventBridge)
+- **Reflection API** - Injeção de mocks em campos privados
+- **Maven Surefire Plugin** - Execução de testes
+
+---
+
+### 📝 Padrão de Testes Implementado
+
+Todos os testes seguem o mesmo padrão:
+
+```java
+@BeforeEach
+void setUp() {
+    // Criar mocks dos clientes AWS
+    mockDynamoDb = mock(DynamoDbClient.class);
+    
+    // Configurar comportamento dos mocks
+    when(mockDynamoDb.putItem(any(PutItemRequest.class)))
+        .thenReturn(PutItemResponse.builder().build());
+    
+    // Injetar mock usando Reflection
+    Field field = FunctionClass.class.getDeclaredField("dynamoDb");
+    field.setAccessible(true);
+    field.set(functionInstance, mockDynamoDb);
+}
+
+@Test
+void testSuccessScenario() {
+    // Preparar entrada
+    Map<String, Object> input = Map.of("key", "value");
+    
+    // Executar função
+    Map<String, Object> result = function.handleRequest(input, mockContext);
+    
+    // Verificar resultado
+    assertNotNull(result);
+    assertEquals(200, result.get("statusCode"));
+    
+    // Verificar interação com mock
+    verify(mockDynamoDb, times(1)).putItem(any(PutItemRequest.class));
+}
+```
 
 ---
 

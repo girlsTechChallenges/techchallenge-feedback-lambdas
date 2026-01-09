@@ -1,9 +1,0 @@
-﻿{
-    "body":  "{\"descricao\":\"Teste direto 2\",\"nota\":\"4\",\"urgencia\":\"MEDIA\"}",
-    "requestContext":  {
-                           "apiId":  "test",
-                           "accountId":  "123456789012",
-                           "requestId":  "test"
-                       },
-    "httpMethod":  "POST"
-}
