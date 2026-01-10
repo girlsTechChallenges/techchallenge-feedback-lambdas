@@ -51,7 +51,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: insert-feedback
-      CodeUri: insert-feedback/target/insert-feedback-1.0.jar
+      CodeUri: insert-feedback/
       Handler: lambda.InsertFeedbackFunction::handleRequest
       Runtime: java21
       Events:
@@ -72,7 +72,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: send-queue
-      CodeUri: send-queue/target/send-queue-1.0.jar
+      CodeUri: send-queue/
       Handler: lambda.SendQueueFunction::handleRequest
       Runtime: java21
       Events:
@@ -100,7 +100,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: notify-critical
-      CodeUri: notify-critical/target/notify-critical-1.0.jar
+      CodeUri: notify-critical/
       Handler: lambda.NotifyCriticalFunction::handleRequest
       Runtime: java21
       Policies:
@@ -154,7 +154,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: list-feedbacks
-      CodeUri: list-feedbacks/target/list-feedbacks-1.0.jar
+      CodeUri: list-feedbacks/
       Handler: lambda.ListFeedbacksFunction::handleRequest
       Runtime: java21
       Environment:
@@ -180,15 +180,18 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: generate-weekly-report
-      CodeUri: generate-weekly-report/target/generate-weekly-report-1.0.jar
+      CodeUri: generate-weekly-report/
       Handler: lambda.GenerateWeeklyReportFunction::handleRequest
       Runtime: java21
       Environment:
         Variables:
           REPORTS_BUCKET: !Ref FeedbackReportsBucket
+          TABLE_NAME: !Ref FeedbacksTable
       Policies:
         - S3WritePolicy:
             BucketName: !Ref FeedbackReportsBucket
+        - DynamoDBReadPolicy:
+            TableName: !Ref FeedbacksTable
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt FeedbackDLQ.Arn
@@ -198,7 +201,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: notify-report
-      CodeUri: notify-report/target/notify-report-1.0.jar
+      CodeUri: notify-report/
       Handler: lambda.NotifyReportFunction::handleRequest
       Runtime: java21
       Environment:
@@ -245,6 +248,7 @@ Resources:
       Description: Trigger semanal para gerar relatório de feedbacks
       ScheduleExpression: cron(0 23 ? * SUN *)
       State: ENABLED
+
       Targets:
         - Arn: !GetAtt FeedbackProcessingStateMachine.Arn
           Id: WeeklyReportTarget

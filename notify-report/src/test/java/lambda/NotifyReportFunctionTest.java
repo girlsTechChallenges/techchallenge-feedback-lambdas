@@ -4,11 +4,8 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
+import org.mockito.MockitoAnnotations;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.ResponseTransformer;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -28,8 +25,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class NotifyReportFunctionTest {
 
     @Mock
@@ -48,6 +43,7 @@ class NotifyReportFunctionTest {
 
     @BeforeEach
     void setUp() {
+        MockitoAnnotations.openMocks(this);
         when(mockContext.getLogger()).thenReturn(mockLogger);
 
         // Configurar variáveis de ambiente
