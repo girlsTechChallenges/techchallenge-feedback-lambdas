@@ -1,4 +1,4 @@
-# Script para testar API com autenticação Cognito
+﻿# Script para testar API com autenticação Cognito
 # Uso: .\test-api-with-auth.ps1 -Action <insert|list> -Email <email> -Password <password>
 
 param(
@@ -13,23 +13,18 @@ param(
     [string]$Password,
     
     [Parameter(Mandatory=$false)]
-    [string]$StackName = "techchallenge-feedback-lambdas"
+    [string]$StackName = "techchallenge-feedback"
 )
 
-# Cores para output
-function Write-Success { param($message) Write-Host "✓ $message" -ForegroundColor Green }
-function Write-Error { param($message) Write-Host "✗ $message" -ForegroundColor Red }
-function Write-Info { param($message) Write-Host "ℹ $message" -ForegroundColor Cyan }
-
 # Obter token do Cognito
-Write-Info "Autenticando usuário..."
+Write-Host "ℹ Autenticando usuário..." -ForegroundColor Cyan
 $tokenResult = .\manage-users.ps1 -Action login -Email $Email -Password $Password -StackName $StackName
 
 # Ler token do arquivo
 $token = Get-Content ".\cognito-token.txt" -Raw
 
 # Obter URL da API
-Write-Info "Obtendo URL da API..."
+Write-Host "ℹ Obtendo URL da API..." -ForegroundColor Cyan
 $outputs = aws cloudformation describe-stacks --stack-name $StackName --query "Stacks[0].Outputs" --output json | ConvertFrom-Json
 
 if ($Action -eq "insert") {
@@ -43,7 +38,7 @@ if ($Action -eq "insert") {
         category = "PRODUTO"
     } | ConvertTo-Json
     
-    Write-Info "`nEnviando feedback para: $apiUrl"
+    Write-Host "`nℹ Enviando feedback para: $apiUrl" -ForegroundColor Cyan
     Write-Host "Payload:" -ForegroundColor Cyan
     Write-Host $payload -ForegroundColor White
     
@@ -59,7 +54,7 @@ if ($Action -eq "insert") {
 elseif ($Action -eq "list") {
     $apiUrl = ($outputs | Where-Object { $_.OutputKey -eq "ListFeedbacksApiUrl" }).OutputValue
     
-    Write-Info "`nListando feedbacks de: $apiUrl"
+    Write-Host "`nℹ Listando feedbacks de: $apiUrl" -ForegroundColor Cyan
     
     $response = curl.exe -X GET $apiUrl `
         -H "Authorization: Bearer $token" `
@@ -69,4 +64,4 @@ elseif ($Action -eq "list") {
     Write-Host $response | ConvertFrom-Json | ConvertTo-Json -Depth 10
 }
 
-Write-Success "`nTeste concluído!"
+Write-Host "`n✓ Teste concluído!" -ForegroundColor Green

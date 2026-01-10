@@ -1,4 +1,4 @@
-# Script para gerenciar usuários do Cognito User Pool
+﻿# Script para gerenciar usuários do Cognito User Pool
 # Uso: .\manage-users.ps1 -Action <create|login|delete> -Email <email> -Password <password> -Name <nome>
 
 param(
@@ -16,18 +16,13 @@ param(
     [string]$Name,
     
     [Parameter(Mandatory=$false)]
-    [string]$StackName = "techchallenge-feedback-lambdas"
+    [string]$StackName = "techchallenge-feedback"
 )
-
-# Cores para output
-function Write-Success { param($message) Write-Host "✓ $message" -ForegroundColor Green }
-function Write-Error { param($message) Write-Host "✗ $message" -ForegroundColor Red }
-function Write-Info { param($message) Write-Host "ℹ $message" -ForegroundColor Cyan }
 
 # Obter IDs do Cognito a partir dos outputs do CloudFormation
 function Get-CognitoConfig {
     try {
-        Write-Info "Obtendo configuração do Cognito..."
+        Write-Host "ℹ Obtendo configuração do Cognito..." -ForegroundColor Cyan
         
         $outputs = aws cloudformation describe-stacks --stack-name $StackName --query "Stacks[0].Outputs" --output json | ConvertFrom-Json
         
@@ -44,7 +39,7 @@ function Get-CognitoConfig {
         }
     }
     catch {
-        Write-Error "Erro ao obter configuração: $_"
+        Write-Host "✗ Erro ao obter configuração: $_" -ForegroundColor Red
         exit 1
     }
 }
@@ -54,12 +49,12 @@ function New-CognitoUser {
     param($Config, $Email, $Password, $Name)
     
     if (-not $Email -or -not $Password -or -not $Name) {
-        Write-Error "Para criar usuário, forneça: -Email, -Password e -Name"
+        Write-Host "✗ Para criar usuário, forneça: -Email, -Password e -Name" -ForegroundColor Red
         exit 1
     }
     
     try {
-        Write-Info "Criando usuário $Email..."
+        Write-Host "ℹ Criando usuário $Email..." -ForegroundColor Cyan
         
         # Criar usuário
         aws cognito-idp admin-create-user `
@@ -75,12 +70,12 @@ function New-CognitoUser {
             --password $Password `
             --permanent
         
-        Write-Success "Usuário criado com sucesso!"
-        Write-Info "Email: $Email"
-        Write-Info "Nome: $Name"
+        Write-Host "✓ Usuário criado com sucesso!" -ForegroundColor Green
+        Write-Host "ℹ Email: $Email" -ForegroundColor Cyan
+        Write-Host "ℹ Nome: $Name" -ForegroundColor Cyan
     }
     catch {
-        Write-Error "Erro ao criar usuário: $_"
+        Write-Host "✗ Erro ao criar usuário: $_" -ForegroundColor Red
         exit 1
     }
 }
@@ -90,12 +85,12 @@ function Get-CognitoToken {
     param($Config, $Email, $Password)
     
     if (-not $Email -or -not $Password) {
-        Write-Error "Para login, forneça: -Email e -Password"
+        Write-Host "✗ Para login, forneça: -Email e -Password" -ForegroundColor Red
         exit 1
     }
     
     try {
-        Write-Info "Autenticando usuário $Email..."
+        Write-Host "ℹ Autenticando usuário $Email..." -ForegroundColor Cyan
         
         $authResult = aws cognito-idp initiate-auth `
             --auth-flow USER_PASSWORD_AUTH `
@@ -104,7 +99,7 @@ function Get-CognitoToken {
             --query "AuthenticationResult" `
             --output json | ConvertFrom-Json
         
-        Write-Success "Autenticação realizada com sucesso!"
+        Write-Host "✓ Autenticação realizada com sucesso!" -ForegroundColor Green
         Write-Host "`n=== TOKENS ===" -ForegroundColor Yellow
         Write-Host "IdToken (use este para Authorization header):" -ForegroundColor Cyan
         Write-Host $authResult.IdToken -ForegroundColor White
@@ -116,12 +111,12 @@ function Get-CognitoToken {
         
         # Salvar token em arquivo para fácil acesso
         $authResult.IdToken | Out-File -FilePath ".\cognito-token.txt" -NoNewline
-        Write-Info "`nIdToken salvo em: .\cognito-token.txt"
+        Write-Host "`nℹ IdToken salvo em: .\cognito-token.txt" -ForegroundColor Cyan
         
         return $authResult
     }
     catch {
-        Write-Error "Erro ao autenticar: $_"
+        Write-Host "✗ Erro ao autenticar: $_" -ForegroundColor Red
         exit 1
     }
 }
@@ -131,21 +126,21 @@ function Remove-CognitoUser {
     param($Config, $Email)
     
     if (-not $Email) {
-        Write-Error "Para deletar usuário, forneça: -Email"
+        Write-Host "✗ Para deletar usuário, forneça: -Email" -ForegroundColor Red
         exit 1
     }
     
     try {
-        Write-Info "Deletando usuário $Email..."
+        Write-Host "ℹ Deletando usuário $Email..." -ForegroundColor Cyan
         
         aws cognito-idp admin-delete-user `
             --user-pool-id $Config.UserPoolId `
             --username $Email
         
-        Write-Success "Usuário deletado com sucesso!"
+        Write-Host "✓ Usuário deletado com sucesso!" -ForegroundColor Green
     }
     catch {
-        Write-Error "Erro ao deletar usuário: $_"
+        Write-Host "✗ Erro ao deletar usuário: $_" -ForegroundColor Red
         exit 1
     }
 }
@@ -155,17 +150,17 @@ function Get-CognitoUsers {
     param($Config)
     
     try {
-        Write-Info "Listando usuários..."
+        Write-Host "ℹ Listando usuários..." -ForegroundColor Cyan
         
         $users = aws cognito-idp list-users `
             --user-pool-id $Config.UserPoolId `
-            --query "Users[*].[Username,Attributes[?Name=='email'].Value|[0],Attributes[?Name=='name'].Value|[0],UserStatus]" `
+            --query 'Users[*].[Username,Attributes[?Name==`email`].Value|[0],Attributes[?Name==`name`].Value|[0],UserStatus]' `
             --output table
         
         Write-Host $users
     }
     catch {
-        Write-Error "Erro ao listar usuários: $_"
+        Write-Host "✗ Erro ao listar usuários: $_" -ForegroundColor Red
         exit 1
     }
 }
