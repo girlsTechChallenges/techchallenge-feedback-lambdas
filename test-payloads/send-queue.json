@@ -1,0 +1,40 @@
+{
+  "Records": [
+    {
+      "eventID": "1",
+      "eventName": "INSERT",
+      "eventVersion": "1.0",
+      "eventSource": "aws:dynamodb",
+      "dynamodb": {
+        "Keys": {
+          "feedbackId": {
+            "S": "test-123"
+          }
+        },
+        "NewImage": {
+          "feedbackId": {
+            "S": "test-123"
+          },
+          "customerName": {
+            "S": "Cliente Teste"
+          },
+          "rating": {
+            "N": "1"
+          },
+          "comment": {
+            "S": "Péssimo atendimento"
+          },
+          "category": {
+            "S": "Atendimento"
+          },
+          "urgency": {
+            "S": "critica"
+          },
+          "createdAt": {
+            "S": "2026-01-08T23:00:00Z"
+          }
+        }
+      }
+    }
+  ]
+}

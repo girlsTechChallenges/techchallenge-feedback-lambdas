@@ -1,0 +1,10 @@
+{
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "email": "test@example.com"
+      }
+    }
+  },
+  "queryStringParameters": null
+}

@@ -1,0 +1,490 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Tech Challenge - Feedbacks API",
+    "description": "Collection para testar o sistema de feedbacks serverless na AWS.\n\n## Configuração Inicial\n\n1. Configure as variáveis de ambiente na collection\n2. Execute a requisição \"1. Get JWT Token\" primeiro\n3. O token será salvo automaticamente\n4. Teste os diferentes cenários de feedback\n\n## Variáveis Necessárias\n- `api_url`: URL da API Gateway\n- `user_pool_id`: ID do Cognito User Pool\n- `client_id`: ID do Cognito Client\n- `username`: Usuário de teste\n- `password`: Senha do usuário",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Get JWT Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Salvar o token JWT na variável de ambiente",
+              "const response = pm.response.json();",
+              "",
+              "if (response.AuthenticationResult && response.AuthenticationResult.IdToken) {",
+              "    pm.collectionVariables.set(\"id_token\", response.AuthenticationResult.IdToken);",
+              "    pm.environment.set(\"id_token\", response.AuthenticationResult.IdToken);",
+              "    console.log(\"Token JWT salvo com sucesso!\");",
+              "    ",
+              "    pm.test(\"Token obtido com sucesso\", function () {",
+              "        pm.expect(response.AuthenticationResult.IdToken).to.be.a('string');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Erro ao obter token\", function () {",
+              "        pm.expect.fail(\"Token não encontrado na resposta\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Validar variáveis obrigatórias",
+              "const userPoolId = pm.collectionVariables.get(\"user_pool_id\");",
+              "const clientId = pm.collectionVariables.get(\"client_id\");",
+              "const username = pm.collectionVariables.get(\"username\");",
+              "const password = pm.collectionVariables.get(\"password\");",
+              "",
+              "if (!userPoolId || !clientId || !username || !password) {",
+              "    throw new Error(\"Configure as variáveis: user_pool_id, client_id, username, password\");",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Amz-Target",
+            "value": "AWSCognitoIdentityProviderService.InitiateAuth",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/x-amz-json-1.1",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"ClientId\": \"{{client_id}}\",\n    \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n    \"AuthParameters\": {\n        \"USERNAME\": \"{{username}}\",\n        \"PASSWORD\": \"{{password}}\"\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://cognito-idp.us-east-1.amazonaws.com/",
+          "protocol": "https",
+          "host": [
+            "cognito-idp",
+            "us-east-1",
+            "amazonaws",
+            "com"
+          ],
+          "path": [
+            ""
+          ]
+        },
+        "description": "Obtém um token JWT do AWS Cognito usando autenticação administrativa.\n\n**Pré-requisitos:**\n- AWS CLI configurado com credenciais válidas\n- Variáveis de ambiente configuradas\n\n**O que faz:**\n- Autentica o usuário no Cognito\n- Salva o token JWT automaticamente na variável `id_token`\n- Este token é válido por 1 hora"
+      },
+      "response": []
+    },
+    {
+      "name": "2. Send Critical Feedback",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains feedbackId\", function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('feedbackId');",
+              "    pm.expect(jsonData).to.have.property('message');",
+              "    pm.expect(jsonData).to.have.property('createdAt');",
+              "});",
+              "",
+              "pm.test(\"FeedbackId is UUID\", function () {",
+              "    const jsonData = pm.response.json();",
+              "    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;",
+              "    pm.expect(jsonData.feedbackId).to.match(uuidRegex);",
+              "});",
+              "",
+              "console.log(\"✓ Feedback CRÍTICO enviado - deve gerar notificação por e-mail\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{id_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"fullName\": \"João Silva\",\n    \"category\": \"Critical\",\n    \"comment\": \"Sistema travando constantemente! Perdi dados importantes.\",\n    \"rating\": 1\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{api_url}}",
+          "host": [
+            "{{api_url}}"
+          ]
+        },
+        "description": "Envia um feedback CRÍTICO.\n\n**Categoria**: Critical  \n**Rating**: 1  \n**Resultado Esperado**: ✉️ Notificação por e-mail será enviada\n\n**Por que é crítico?**\n- category = \"Critical\" OU rating ≤ 2"
+      },
+      "response": []
+    },
+    {
+      "name": "3. Send Low Rating Feedback",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains feedbackId\", function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('feedbackId');",
+              "});",
+              "",
+              "console.log(\"✓ Feedback com rating baixo enviado - deve gerar notificação\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{id_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"fullName\": \"Maria Santos\",\n    \"category\": \"Service\",\n    \"comment\": \"Atendimento demorado, mas conseguiram resolver.\",\n    \"rating\": 2\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{api_url}}",
+          "host": [
+            "{{api_url}}"
+          ]
+        },
+        "description": "Envia um feedback com rating baixo (2).\n\n**Categoria**: Service  \n**Rating**: 2  \n**Resultado Esperado**: ✉️ Notificação por e-mail será enviada\n\n**Por que é crítico?**\n- rating = 2 (≤ 2 é considerado crítico)"
+      },
+      "response": []
+    },
+    {
+      "name": "4. Send Normal Feedback",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains feedbackId\", function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('feedbackId');",
+              "});",
+              "",
+              "console.log(\"✓ Feedback normal enviado - NÃO deve gerar notificação\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{id_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"fullName\": \"Pedro Costa\",\n    \"category\": \"General\",\n    \"comment\": \"Experiência satisfatória no geral.\",\n    \"rating\": 3\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{api_url}}",
+          "host": [
+            "{{api_url}}"
+          ]
+        },
+        "description": "Envia um feedback normal.\n\n**Categoria**: General  \n**Rating**: 3  \n**Resultado Esperado**: ❌ NÃO gera notificação\n\n**Por que não é crítico?**\n- category ≠ \"Critical\"\n- rating > 2"
+      },
+      "response": []
+    },
+    {
+      "name": "5. Send Positive Feedback",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains feedbackId\", function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('feedbackId');",
+              "    pm.expect(jsonData).to.have.property('message');",
+              "});",
+              "",
+              "console.log(\"✓ Feedback positivo enviado - NÃO deve gerar notificação\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{id_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"fullName\": \"Ana Oliveira\",\n    \"category\": \"Suggestion\",\n    \"comment\": \"Excelente sistema! Seria legal adicionar modo escuro.\",\n    \"rating\": 5\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{api_url}}",
+          "host": [
+            "{{api_url}}"
+          ]
+        },
+        "description": "Envia um feedback positivo.\n\n**Categoria**: Suggestion  \n**Rating**: 5  \n**Resultado Esperado**: ❌ NÃO gera notificação\n\n**Por que não é crítico?**\n- category ≠ \"Critical\"\n- rating > 2"
+      },
+      "response": []
+    },
+    {
+      "name": "6. List Feedbacks",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains items array\", function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('items');",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "    pm.expect(jsonData).to.have.property('count');",
+              "});",
+              "",
+              "pm.test(\"Each feedback has required fields\", function () {",
+              "    const jsonData = pm.response.json();",
+              "    if (jsonData.items.length > 0) {",
+              "        const feedback = jsonData.items[0];",
+              "        pm.expect(feedback).to.have.property('feedbackId');",
+              "        pm.expect(feedback).to.have.property('pk');",
+              "        pm.expect(feedback).to.have.property('createdAt');",
+              "        pm.expect(feedback).to.have.property('descricao');",
+              "        pm.expect(feedback).to.have.property('nota');",
+              "        pm.expect(feedback).to.have.property('urgencia');",
+              "    }",
+              "});",
+              "",
+              "const jsonData = pm.response.json();",
+              "console.log(\"✓ Total de feedbacks encontrados:\", jsonData.count);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{id_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{list_api_url}}?startDate=2026-01-01&endDate=2026-01-10",
+          "host": [
+            "{{list_api_url}}"
+          ],
+          "query": [
+            {
+              "key": "startDate",
+              "value": "2026-01-01",
+              "description": "Data inicial (formato: YYYY-MM-DD)"
+            },
+            {
+              "key": "endDate",
+              "value": "2026-01-10",
+              "description": "Data final (formato: YYYY-MM-DD)"
+            },
+            {
+              "key": "urgency",
+              "value": "ALTA",
+              "description": "Filtrar por urgência (ALTA, MEDIA, BAIXA)",
+              "disabled": true
+            },
+            {
+              "key": "limit",
+              "value": "50",
+              "description": "Número máximo de resultados (padrão: 100)",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "Lista feedbacks com filtros opcionais.\n\n**Parâmetros Query:**\n- `startDate` (obrigatório): Data inicial no formato YYYY-MM-DD\n- `endDate` (obrigatório): Data final no formato YYYY-MM-DD\n- `urgency` (opcional): Filtrar por urgência (ALTA, MEDIA, BAIXA)\n- `limit` (opcional): Número máximo de resultados (padrão: 100)\n\n**Exemplo de Uso:**\n- Todos feedbacks: `?startDate=2026-01-01&endDate=2026-01-10`\n- Apenas críticos: `?startDate=2026-01-01&endDate=2026-01-10&urgency=ALTA`\n- Limitados: `?startDate=2026-01-01&endDate=2026-01-10&limit=20`"
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Validar se o token existe (exceto na requisição de login)",
+          "const requestName = pm.info.requestName;",
+          "",
+          "if (requestName !== \"1. Get JWT Token\") {",
+          "    const token = pm.collectionVariables.get(\"id_token\") || pm.environment.get(\"id_token\");",
+          "    ",
+          "    if (!token) {",
+          "        console.warn(\"⚠️ Token JWT não encontrado! Execute a requisição '1. Get JWT Token' primeiro.\");",
+          "    }",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Log do status da resposta",
+          "console.log(\"Status:\", pm.response.code, pm.response.status);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "api_url",
+      "value": "https://ooz1z63v31.execute-api.us-east-1.amazonaws.com/Prod/feedback",
+      "type": "string"
+    },
+    {
+      "key": "list_api_url",
+      "value": "https://ooz1z63v31.execute-api.us-east-1.amazonaws.com/Prod/feedbacks",
+      "type": "string"
+    },
+    {
+      "key": "user_pool_id",
+      "value": "us-east-1_Etx3Vkioi",
+      "type": "string"
+    },
+    {
+      "key": "client_id",
+      "value": "638r9k783e2571ev516nue1eji",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "test@example.com",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "TestPass123!",
+      "type": "string"
+    },
+    {
+      "key": "id_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "state_machine_arn",
+      "value": "arn:aws:states:us-east-1:XXXXXXXXXXXX:stateMachine:feedback-processing",
+      "type": "string"
+    },
+    {
+      "key": "execution_arn",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
